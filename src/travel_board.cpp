@@ -3,8 +3,8 @@
 #include <Wire.h>
 
 // ESP32-C3 default I2C pins. Adjust for your board (XIAO: SDA=6, SCL=7).
-#define I2C_SDA 8
-#define I2C_SCL 9
+#define I2C_SDA 3
+#define I2C_SCL 4
 
 #define NUM_ROWS  6
 #define NUM_COLS  20

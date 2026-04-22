@@ -1,5 +1,7 @@
 # FlipBoard
 
+> This project was built as an experiment to see how effectively Claude could be used as the sole development tool for an embedded ESP32 project - from initial design spec through to a working networked device, with no code written by hand. Ok, some tweeking to fix visual errors where things did not line up pixel perfect. 
+
 FlipBoard is a split-flap departure board simulator for the ESP32, rendered on a 128×64 SSD1306 OLED. It recreates the look and feel of the mechanical Solari boards found in airports and train stations - each character slot cycles independently through the alphabet before locking onto its final glyph, with rows cascading one after another in the classic left-to-right, top-to-bottom sequence.
 
 ```
@@ -12,6 +14,8 @@ FL 606  DUBAI
 ```
 
 The display is divided into six fixed-width rows separated by dotted rules. A WiFi signal indicator sits in the top-right corner. Text on any row - or all rows at once - can be updated remotely over WiFi via a secured HTTP API or through a built-in browser UI served directly from the device.
+
+![UI wireframes - four display layout variants explored during design](images/ui-wireframes.png)
 
 ### Design
 

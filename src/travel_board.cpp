@@ -22,30 +22,35 @@
 //   ROW_PITCH  = 10 px → distance between successive baselines.
 //   ASCENT     = 6 px  → pixels above baseline (= height of uppercase glyph).
 //
-//   Row i baseline  y = TOP_OFFSET + ASCENT + i × ROW_PITCH = 10 + i×10.
-//   Separator       y = baseline + 1                         = 11 + i×10.
+//   Row i baseline  y = ASCENT + i × ROW_PITCH = 6 + i×11.
+//   Separator       y = baseline + SEP_GAP     = 8 + i×11.
 //
-//   y= 0  ─── display top edge ──────────────────────────────────────
+//   ROW_PITCH = 11  →  6 px glyph + 2 px gap + 1 px sep + 2 px gap = 11 px.
+//   2 px of clear space on each side of every separator.
+//
+//   y= 0  ─── display top / row 0 glyph top ────────────────────────────
 //   y= 1   }
-//   y= 2   }  4 px top margin (nothing drawn here)
-//   y= 3   }
-//   y= 4  ─── row 0 glyph top  ──────────────────────────────────────
+//   y= 2   }
+//   y= 3   }  row 0 glyph body (6 px, x=2…127)
+//   y= 4   }
 //   y= 5   }
-//   y= 6   }  row 0 glyph body (6 px tall, columns x=2…127)
-//   y= 7   }
-//   y= 8   }
-//   y= 9   }
-//   y=10  ─── row 0 baseline  ─  drawStr y = 10
-//   y=11  ─── separator dots  ─  every 3 px from x=2 to x=127
-//   y=12   }  2 px gap
-//   y=13   }
-//   y=14  ─── row 1 glyph top ──────────────────────────────────────
-//             … pattern repeats for rows 1–5 …
-//   y=54  ─── row 5 glyph top
-//   y=60  ─── row 5 baseline  ─  drawStr y = 60
-//   y=61   }
-//   y=62   }  3 px bottom margin (nothing drawn here)
-//   y=63  ─── display bottom edge ────────────────────────────────────
+//   y= 6  ─── row 0 baseline        drawStr y = 6
+//   y= 7   }  2 px gap
+//   y= 8  ─── separator dots ────── every 3 px, x=2…127
+//   y= 9   }  2 px gap
+//   y=10  ─── row 1 glyph top ──────────────────────────────────────────
+//   y=11   }
+//   y=12   }
+//   y=13   }  row 1 glyph body
+//   y=14   }
+//   y=15   }
+//   y=17  ─── row 1 baseline        drawStr y = 17
+//   y=19  ─── separator dots
+//             … pattern repeats (pitch = 11 px) …
+//   y=50  ─── row 5 glyph top
+//   y=61  ─── row 5 baseline        drawStr y = 61
+//   y=62   }  2 px bottom margin
+//   y=63  ─── display bottom edge ─────────────────────────────────────
 //
 // ── WiFi status icon (top-right, drawn last) ─────────────────────────────────
 //   Concentric arcs centred at x=123, occupying x=120…126, y=1…5.
@@ -72,15 +77,19 @@
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 #define NUM_ROWS    6
-#define NUM_COLS    25         // 21 × 6 px + 2 px left pad = 128 px (fills display)
+#define NUM_COLS    21         // 21 × 6 px + 2 px left pad = 128 px (fills display)
 #define LEFT_PAD    2          // px gap left of column 0
-#define TOP_OFFSET  4          // px gap above the row-0 glyph top
+#define TOP_OFFSET  0          // no top margin — row 0 glyph starts at y=0
 #define ASCENT      6          // px above baseline for this font's uppercase
-#define ROW_PITCH   10         // px between consecutive baselines
+#define ROW_PITCH   11         // px between baselines: 6 glyph + 2 gap + 1 sep + 2 gap
+#define SEP_GAP     2          // px of clear space on each side of the separator
 
 // Convenient macros — computed entirely at compile time.
-#define BASELINE(row)   (TOP_OFFSET + ASCENT + (row) * ROW_PITCH)   // 10 + row×10
-#define SEPARATOR(row)  (BASELINE(row) + 1)                          // 11 + row×10
+// BASELINE(0) = 0+6 = 6.   BASELINE(5) = 6+5×11 = 61.
+// Glyph top row 0 : y = 6−6 = 0  → flush with display top.
+// Glyph btm row 5 : y = 61       → bottom margin = 63−61 = 2 px.
+#define BASELINE(row)   (TOP_OFFSET + ASCENT + (row) * ROW_PITCH)   // 6 + row×11
+#define SEPARATOR(row)  (BASELINE(row) + SEP_GAP)                    // 8 + row×11
 
 // ─── Alphabet ────────────────────────────────────────────────────────────────
 // Space is index 0. Slots start on ' ' so every position does a full lap.
@@ -255,8 +264,8 @@ static void drawWifi() {
     // Paint a 9×12 black rectangle covering x=119…127, y=0…11.
     // This is wider and taller than the icon itself so no row-0 glyph pixels
     // (which extend to y=10 with the new TOP_OFFSET=4 layout) survive behind it.
-    u8g2.setDrawColor(0);              // colour 0 = black (erase)
-    u8g2.drawBox(119, 0, 9, 12);      // x, y, width, height
+    u8g2.setDrawColor(0);                              // colour 0 = black (erase)
+    u8g2.drawBox(119, 0, 9, SEPARATOR(0) + 1);        // clears glyph + 2 px gap + separator row
     u8g2.setDrawColor(1);              // colour 1 = white (draw)
 
     // ── Step 2: draw icon pixels ─────────────────────────────────────────────
@@ -346,7 +355,7 @@ void board_tick() {
         //   This creates a dashed rule: ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
         if (i < NUM_ROWS - 1) {
             const uint8_t sy = SEPARATOR(i);
-            for (uint8_t x = LEFT_PAD; x <= 127; x += 3)
+            for (uint8_t x = LEFT_PAD; x <= 127; x += 4)
                 u8g2.drawPixel(x, sy);
         }
     }

@@ -77,19 +77,21 @@
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 #define NUM_ROWS    6
-#define NUM_COLS    21         // 21 × 6 px + 2 px left pad = 128 px (fills display)
+#define NUM_COLS    24         // 21 × 6 px + 2 px left pad = 128 px (fills display)
 #define LEFT_PAD    2          // px gap left of column 0
-#define TOP_OFFSET  0          // no top margin — row 0 glyph starts at y=0
+#define TOP_OFFSET  2          // no top margin — row 0 glyph starts at y=0
 #define ASCENT      6          // px above baseline for this font's uppercase
-#define ROW_PITCH   11         // px between baselines: 6 glyph + 2 gap + 1 sep + 2 gap
-#define SEP_GAP     2          // px of clear space on each side of the separator
+#define ROW_PITCH   11         // px between baselines: 6 glyph + gap + 1 sep + gap
 
-// Convenient macros — computed entirely at compile time.
+// Compile-time baseline position for row i.
 // BASELINE(0) = 0+6 = 6.   BASELINE(5) = 6+5×11 = 61.
 // Glyph top row 0 : y = 6−6 = 0  → flush with display top.
 // Glyph btm row 5 : y = 61       → bottom margin = 63−61 = 2 px.
 #define BASELINE(row)   (TOP_OFFSET + ASCENT + (row) * ROW_PITCH)   // 6 + row×11
-#define SEPARATOR(row)  (BASELINE(row) + SEP_GAP)                    // 8 + row×11
+
+// Separator gap — runtime variable so board_set_sep_gap() can adjust it live.
+// Default 2 px gives: glyph · · gap · sep · gap · · glyph.
+static uint8_t g_sepGap = 2;
 
 // ─── Alphabet ────────────────────────────────────────────────────────────────
 // Space is index 0. Slots start on ' ' so every position does a full lap.
@@ -240,6 +242,7 @@ void board_set_all(const char* texts[6]) {
 void board_set_speed_ms(uint16_t ms) { g_flipMs = ms; }
 
 void board_set_wifi_bars(uint8_t bars) { g_wifiBars = bars > 3 ? 3 : bars; }
+void board_set_sep_gap(uint8_t px)     { g_sepGap   = px; }
 
 // ─── Drawing: WiFi icon ───────────────────────────────────────────────────────
 // The icon lives in the top-right corner.  It is drawn AFTER the row text so
@@ -265,7 +268,7 @@ static void drawWifi() {
     // This is wider and taller than the icon itself so no row-0 glyph pixels
     // (which extend to y=10 with the new TOP_OFFSET=4 layout) survive behind it.
     u8g2.setDrawColor(0);                              // colour 0 = black (erase)
-    u8g2.drawBox(119, 0, 9, SEPARATOR(0) + 1);        // clears glyph + 2 px gap + separator row
+    u8g2.drawBox(119, 0, 9, BASELINE(0) + g_sepGap + 1); // clears glyph + gap + separator row
     u8g2.setDrawColor(1);              // colour 1 = white (draw)
 
     // ── Step 2: draw icon pixels ─────────────────────────────────────────────
@@ -354,14 +357,14 @@ void board_tick() {
         //   Dots every 3 px from x=2 to x=127, leaving a 1 px gap between dots.
         //   This creates a dashed rule: ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
         if (i < NUM_ROWS - 1) {
-            const uint8_t sy = SEPARATOR(i);
+            const uint8_t sy = BASELINE(i) + g_sepGap;
             for (uint8_t x = LEFT_PAD; x <= 127; x += 4)
                 u8g2.drawPixel(x, sy);
         }
     }
 
     // Draw the WiFi icon last so it sits on top of any row-0 text overflow.
-    drawWifi();
+    //drawWifi();
 
     // Push the completed frame buffer to the SSD1306 over I²C (~22 ms at 400 kHz).
     u8g2.sendBuffer();

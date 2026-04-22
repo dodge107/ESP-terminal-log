@@ -8,3 +8,4 @@ void board_set_all(const char* rows[6]);
 void board_tick();                  // call every loop(); drives animation + redraw
 void board_set_speed_ms(uint16_t ms);
 void board_set_wifi_bars(uint8_t bars); // 0..3
+void board_set_sep_gap(uint8_t px);     // px of clear space on each side of the separator line

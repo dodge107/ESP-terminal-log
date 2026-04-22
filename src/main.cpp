@@ -138,6 +138,47 @@ static void handleSetRow() {
     server.send(200, "text/plain", "ok");
 }
 
+// POST /rows
+// Set all 6 rows in one request.  Send Content-Type: text/plain with one line
+// per row, separated by newlines.  Fewer than 6 lines clears the remaining rows.
+//
+// Example:
+//   curl -X POST http://<ip>/rows \
+//        -H "Content-Type: text/plain" \
+//        -d $'FL 101  LONDON\nFL 202  NEW YORK\nFL 303  PARIS\nFL 404  TOKYO\nFL 505  SYDNEY\nFL 606  DUBAI'
+static void handleSetAll() {
+    String body = server.arg("plain");
+    if (body.isEmpty()) {
+        server.send(400, "application/json", "{\"error\":\"empty body — send Content-Type: text/plain\"}");
+        return;
+    }
+
+    // Split body on '\n', strip '\r', take up to 6 lines.
+    String  lines[6];
+    uint8_t count = 0;
+    int     start = 0;
+    for (int i = 0; i <= (int)body.length() && count < 6; i++) {
+        if (i == (int)body.length() || body[i] == '\n') {
+            lines[count] = body.substring(start, i);
+            if (lines[count].endsWith("\r"))
+                lines[count].remove(lines[count].length() - 1);
+            count++;
+            start = i + 1;
+        }
+    }
+
+    // Build pointer array; missing rows get nullptr → board treats as empty.
+    const char* texts[6] = {};
+    for (uint8_t i = 0; i < count; i++) texts[i] = lines[i].c_str();
+
+    Serial.printf("[HTTP] POST /rows  %d lines\n", count);
+    for (uint8_t i = 0; i < 6; i++)
+        Serial.printf("  [%d] \"%s\"\n", i, texts[i] ? texts[i] : "");
+
+    board_set_all(texts);
+    server.send(200, "text/plain", "ok");
+}
+
 // DELETE /row/<n>/clear
 // Animates the target row to all spaces.
 static void handleClearRow() {
@@ -158,7 +199,8 @@ static void setupRoutes() {
     static const char* hdrs[] = {"Content-Type"};
     server.collectHeaders(hdrs, 1);
 
-    server.on("/status", HTTP_GET, handleStatus);
+    server.on("/status", HTTP_GET,  handleStatus);
+    server.on("/rows",   HTTP_POST, handleSetAll);
 
     // Register one POST and one DELETE handler per row (rows 0–5).
     for (int i = 0; i <= 5; i++) {

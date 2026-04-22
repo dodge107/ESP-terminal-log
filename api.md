@@ -1,5 +1,23 @@
 # ESP Split-Flap Board — HTTP API
 
+## First-time WiFi setup
+
+WiFi credentials are **not** hardcoded — they are configured at runtime via a captive portal.
+
+On first boot (or after credentials are cleared from NVS):
+
+1. The board shows **"WIFI SETUP"** on the display and opens an access point named `FLIPBOARD-XXXX` (where `XXXX` is unique to each board).
+2. Connect your phone or laptop to that AP.
+3. A captive portal page opens automatically (or browse to `192.168.4.1`).
+4. Choose your network, enter the password, and save.
+5. The board connects, saves credentials to NVS, and starts normally.
+
+On every subsequent boot the saved credentials are used automatically — no portal appears.
+
+To re-run the portal (e.g. after moving to a new network), flash the firmware with a `wm.resetSettings()` call before `autoConnect()`, or erase NVS with `pio run --target erase`.
+
+---
+
 All requests require the `X-Api-Key` header set to the value defined in `src/secrets.h`.
 
 ```sh

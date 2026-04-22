@@ -26,6 +26,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiManager.h>
 #include <WebServer.h>
 #include "travel_board.h"
 #include "secrets.h"
@@ -41,6 +42,17 @@ static const char* kBoot[6] = {
     "v1",
     "",
     "",
+    ""
+};
+
+// ─── Config portal splash (shown while waiting for WiFi setup) ───────────────
+// Row 2 is patched at runtime with the AP SSID — see setup().
+static const char* kPortal[6] = {
+    "WIFI SETUP",
+    "JOIN NETWORK",
+    "",           // filled at runtime with AP name
+    "THEN VISIT",
+    "192.168.4.1",
     ""
 };
 
@@ -61,7 +73,6 @@ static WebServer server(80);
 static uint32_t g_rateWindowStart = 0;
 static uint16_t g_rateCount       = 0;
 static uint32_t  g_lastWifiCheckMs = 0;
-static bool      g_demoShown       = false;   // ensure demo is set only once
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -307,7 +318,6 @@ void setup() {
     Serial.printf("  Heap  : %lu B\n",     (unsigned long)ESP.getFreeHeap());
     Serial.printf("  SDA   : GPIO%d  SCL : GPIO%d\n", I2C_SDA_PIN, I2C_SCL_PIN);
     Serial.println("────────────────────────────────────");
-    Serial.printf("  Connecting to %s …\n", WIFI_SSID);
 
     // Patch the boot splash row 1 with the actual chip model at runtime.
     static char chipRow[22];
@@ -316,7 +326,43 @@ void setup() {
 
     board_init();
     board_set_all(kBoot);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+    // Build a unique AP name from the lower 16 bits of the chip MAC so multiple
+    // boards on the same network don't collide in the config portal.
+    static char apName[20];
+    snprintf(apName, sizeof(apName), "FLIPBOARD-%04X",
+             (uint16_t)(ESP.getEfuseMac() >> 32));
+
+    // Pre-patch the portal splash with the AP name before the callback fires.
+    kPortal[2] = apName;
+
+    WiFiManager wm;
+    wm.setConfigPortalTimeout(180);   // reboot after 3 min if no one configures
+
+    // Called when stored credentials fail and the AP/portal opens.
+    wm.setAPCallback([](WiFiManager*) {
+        Serial.printf("  No saved WiFi — portal open on AP \"%s\"\n", kPortal[2]);
+        board_set_all(kPortal);
+        board_set_wifi_bars(0);
+    });
+
+    // Called each time WiFiManager saves new credentials.
+    wm.setSaveConfigCallback([]() {
+        Serial.println("  WiFi credentials saved — connecting…");
+    });
+
+    Serial.println("  Starting WiFiManager…");
+    if (!wm.autoConnect(apName)) {
+        // Portal timed out with no connection — restart and try again.
+        Serial.println("  Config portal timed out — restarting");
+        ESP.restart();
+    }
+
+    Serial.printf("  Connected!  SSID: %s  IP: %s\n",
+                  WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    board_set_wifi_bars(rssiToBars(WiFi.RSSI()));
+    board_set_all(kDemo);
+    setupRoutes();
 }
 
 void loop() {
@@ -327,22 +373,12 @@ void loop() {
     // Drive the flap animation and push the frame to the display.
     board_tick();
 
-    // Every 5 s: update the WiFi icon and print a status block.
+    // Every 5 s: refresh the WiFi signal icon and print a status block.
     uint32_t now = millis();
     if (now - g_lastWifiCheckMs >= 5000) {
         g_lastWifiCheckMs = now;
-
-        bool connected = (WiFi.status() == WL_CONNECTED);
-        board_set_wifi_bars(connected ? rssiToBars(WiFi.RSSI()) : 0);
-
-        if (connected && !g_demoShown) {
-            g_demoShown = true;
-            Serial.printf("  Connected!  IP: %s\n",
-                          WiFi.localIP().toString().c_str());
-            board_set_all(kDemo);
-            setupRoutes();      // start HTTP server now that we have an IP
-        }
-
+        board_set_wifi_bars(WiFi.status() == WL_CONNECTED
+                            ? rssiToBars(WiFi.RSSI()) : 0);
         printStatus();
     }
 }

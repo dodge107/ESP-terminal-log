@@ -35,6 +35,79 @@
 #define MAX_BODY_BYTES  512   // reject bodies larger than this
 #define RATE_LIMIT_RPS  10    // max requests per second (global)
 
+// ─── Web UI page ─────────────────────────────────────────────────────────────
+static const char kPageUI[] PROGMEM = R"HTML(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FlipBoard</title>
+<style>
+*{box-sizing:border-box}
+body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0;padding:16px;max-width:480px}
+h1{font-size:1.1em;letter-spacing:.35em;border-bottom:1px solid #ffaa00;padding-bottom:8px;margin:0 0 14px}
+.field{margin-bottom:10px}
+label{display:block;font-size:.72em;color:#cc8800;margin-bottom:3px}
+input[type=text]{width:100%;background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:1em}
+input[type=text]:focus{outline:none;border-color:#ffaa00}
+.row-input{text-transform:uppercase;letter-spacing:.08em}
+hr{border:none;border-top:1px solid #2a2a2a;margin:18px 0}
+button{font-family:monospace;font-size:.85em;padding:9px 18px;cursor:pointer;letter-spacing:.1em;margin-top:6px}
+.primary{background:#ffaa00;color:#0e0e0e;border:none;margin-right:8px}
+.danger{background:#880000;color:#fff;border:none}
+#msg{margin-top:10px;font-size:.82em;min-height:1.1em}
+</style>
+</head>
+<body>
+<h1>&#9646; FLIPBOARD</h1>
+<div class="field">
+  <label>API KEY</label>
+  <input type="text" id="key" placeholder="paste api key here">
+</div>
+<hr>
+<form id="f">
+  <div class="field"><label>ROW 0</label><input class="row-input" type="text" name="r0" maxlength="21" autocomplete="off"></div>
+  <div class="field"><label>ROW 1</label><input class="row-input" type="text" name="r1" maxlength="21" autocomplete="off"></div>
+  <div class="field"><label>ROW 2</label><input class="row-input" type="text" name="r2" maxlength="21" autocomplete="off"></div>
+  <div class="field"><label>ROW 3</label><input class="row-input" type="text" name="r3" maxlength="21" autocomplete="off"></div>
+  <div class="field"><label>ROW 4</label><input class="row-input" type="text" name="r4" maxlength="21" autocomplete="off"></div>
+  <div class="field"><label>ROW 5</label><input class="row-input" type="text" name="r5" maxlength="21" autocomplete="off"></div>
+  <button type="submit" class="primary">UPDATE BOARD</button>
+</form>
+<div id="msg"></div>
+<hr>
+<button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
+<script>
+const keyEl=document.getElementById('key');
+const msg=document.getElementById('msg');
+keyEl.value=localStorage.getItem('fb_key')||'';
+document.getElementById('f').onsubmit=async e=>{
+  e.preventDefault();
+  const k=keyEl.value.trim();
+  localStorage.setItem('fb_key',k);
+  const body=['r0','r1','r2','r3','r4','r5']
+    .map(n=>(e.target[n].value||'').toUpperCase()).join('\n');
+  msg.textContent='Sending…';
+  try{
+    const r=await fetch('/rows',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body});
+    msg.textContent=r.ok?'Board updated.':'Error '+r.status+' — check API key?';
+  }catch(err){msg.textContent='Failed: '+err;}
+};
+async function resetWifi(){
+  if(!confirm('Clear saved WiFi credentials and reboot into setup mode?'))return;
+  const k=keyEl.value.trim();
+  localStorage.setItem('fb_key',k);
+  msg.textContent='Resetting…';
+  try{await fetch('/wifi/reset',{method:'POST',headers:{'X-Api-Key':k}});}catch(e){}
+  msg.textContent='Board rebooting into WiFi setup mode…';
+}
+</script>
+</body>
+</html>
+)HTML";
+
 // ─── Boot splash (shown while connecting) ────────────────────────────────────
 static const char* kBoot[6] = {
     "INITIALIZING",
@@ -252,6 +325,26 @@ static void handleClearRow() {
     server.send(200, "text/plain", "ok");
 }
 
+// GET /
+// Serves the browser-based control UI. No authentication required so the
+// page loads in any browser; the API key is entered inside the page itself.
+static void handleUI() {
+    if (rateLimited()) return;
+    server.send_P(200, "text/html", kPageUI);
+}
+
+// POST /wifi/reset
+// Clears stored WiFi credentials from NVS and reboots into the config portal.
+static void handleWifiReset() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    server.send(200, "text/plain", "WiFi credentials cleared. Rebooting…");
+    delay(500);
+    WiFiManager wm;
+    wm.resetSettings();
+    ESP.restart();
+}
+
 // Register all routes and start the server.
 // collectHeaders must be called before server.begin() to make request headers
 // readable inside handlers via server.header("Content-Type").
@@ -259,8 +352,10 @@ static void setupRoutes() {
     static const char* hdrs[] = {"Content-Type", "X-Api-Key"};
     server.collectHeaders(hdrs, 2);
 
-    server.on("/status", HTTP_GET,  handleStatus);
-    server.on("/rows",   HTTP_POST, handleSetAll);
+    server.on("/",           HTTP_GET,  handleUI);
+    server.on("/wifi/reset", HTTP_POST, handleWifiReset);
+    server.on("/status",     HTTP_GET,  handleStatus);
+    server.on("/rows",       HTTP_POST, handleSetAll);
 
     // Register one POST and one DELETE handler per row (rows 0–5).
     for (int i = 0; i <= 5; i++) {
@@ -326,6 +421,12 @@ void setup() {
 
     board_init();
     board_set_all(kBoot);
+    // Drive the animation for ~3 s so the boot splash is fully visible before
+    // wm.autoConnect() takes over and loop() stops running.
+    for (uint32_t t = millis() + 3000; millis() < t;) {
+        board_tick();
+        delay(16);
+    }
 
     // Build a unique AP name from the lower 16 bits of the chip MAC so multiple
     // boards on the same network don't collide in the config portal.
@@ -344,6 +445,11 @@ void setup() {
         Serial.printf("  No saved WiFi — portal open on AP \"%s\"\n", kPortal[2]);
         board_set_all(kPortal);
         board_set_wifi_bars(0);
+        // Run animation until it settles so the portal splash is fully readable.
+        for (uint32_t t = millis() + 3000; millis() < t;) {
+            board_tick();
+            delay(16);
+        }
     });
 
     // Called each time WiFiManager saves new credentials.

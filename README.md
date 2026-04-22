@@ -15,6 +15,14 @@ FL 606  DUBAI
 
 The display is divided into six fixed-width rows separated by dotted rules. A WiFi signal indicator sits in the top-right corner. Text on any row - or all rows at once - can be updated remotely over WiFi via a secured HTTP API or through a built-in browser UI served directly from the device.
 
+| Demo content | Mid-flip animation |
+|:---:|:---:|
+| ![Board showing default flight destinations](images/display-demo.jpg) | ![Board mid-animation with characters cycling](images/display-mid-flip.jpg) |
+
+| Stock ticker content | WiFi setup screen |
+|:---:|:---:|
+| ![Board displaying stock tickers and prices](images/display-stock.jpg) | ![Board showing WiFi captive portal instructions](images/display-wifi-setup.jpg) |
+
 ![UI wireframes - four display layout variants explored during design](images/ui-wireframes.png)
 
 ### Design

@@ -67,7 +67,7 @@ The I²C pins can be changed per-board in `platformio.ini` without touching any 
 ### 1. Clone the repository
 
 ```sh
-git clone https://github.com/<your-username>/flipboard.git
+git clone https://github.com/dodge107/ESP-terminal-log.git
 cd flipboard
 ```
 

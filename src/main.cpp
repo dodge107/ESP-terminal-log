@@ -166,6 +166,22 @@ static void setupRoutes() {
         server.on(String("/row/") + i + "/clear", HTTP_DELETE, handleClearRow);
     }
 
+    // Catch-all: return a 404 JSON error for any unregistered route.
+    server.onNotFound([]() {
+        String msg = "{\"error\":\"not found\",\"method\":\"";
+        msg += server.method() == HTTP_GET    ? "GET"
+             : server.method() == HTTP_POST   ? "POST"
+             : server.method() == HTTP_DELETE ? "DELETE"
+             : "OTHER";
+        msg += "\",\"uri\":\"";
+        msg += server.uri();
+        msg += "\"}";
+        Serial.printf("[HTTP] 404  %s  %s\n",
+                      server.uri().c_str(),
+                      server.method() == HTTP_GET ? "GET" : "POST/OTHER");
+        server.send(404, "application/json", msg);
+    });
+
     server.begin();
     Serial.println("  HTTP server started on port 80");
 }

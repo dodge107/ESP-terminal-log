@@ -77,7 +77,7 @@
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 #define NUM_ROWS    6
-#define NUM_COLS    24         // 21 × 6 px + 2 px left pad = 128 px (fills display)
+#define NUM_COLS    25         // 21 × 6 px + 2 px left pad = 128 px (fills display)
 #define LEFT_PAD    2          // px gap left of column 0
 #define TOP_OFFSET  2          // no top margin — row 0 glyph starts at y=0
 #define ASCENT      6          // px above baseline for this font's uppercase
@@ -95,8 +95,8 @@ static uint8_t g_sepGap = 2;
 
 // ─── Alphabet ────────────────────────────────────────────────────────────────
 // Space is index 0. Slots start on ' ' so every position does a full lap.
-static const char    ALPHABET[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-static const uint8_t ALPHA_LEN  = 27;
+static const char    ALPHABET[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+static const uint8_t ALPHA_LEN  = 37;
 
 // ─── U8g2 display object ─────────────────────────────────────────────────────
 // Full-buffer mode: we rebuild the entire 1 024-byte frame buffer every tick
@@ -202,7 +202,7 @@ static void startRow(uint8_t ri, const char* text, uint32_t startMs) {
 void board_init() {
     Wire.begin(I2C_SDA, I2C_SCL);
     u8g2.begin();
-    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setFont(u8g2_font_5x7_tf);
 
     // All slots start as settled spaces so the display is blank on boot.
     for (uint8_t i = 0; i < NUM_ROWS; i++) {

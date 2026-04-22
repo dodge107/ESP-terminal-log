@@ -72,8 +72,17 @@
 #include <Wire.h>
 
 // ─── Hardware ────────────────────────────────────────────────────────────────
-#define I2C_SDA     3          // Adjust for your ESP32-C3 board
-#define I2C_SCL     4
+// Pins are injected by platformio.ini build_flags (-DI2C_SDA_PIN=n -DI2C_SCL_PIN=n).
+// Fallbacks match the esp32-c3-devkitm-1 wiring; change them here if building
+// outside PlatformIO or without the flags.
+#ifndef I2C_SDA_PIN
+  #define I2C_SDA_PIN 3
+#endif
+#ifndef I2C_SCL_PIN
+  #define I2C_SCL_PIN 4
+#endif
+#define I2C_SDA  I2C_SDA_PIN
+#define I2C_SCL  I2C_SCL_PIN
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 #define NUM_ROWS    6

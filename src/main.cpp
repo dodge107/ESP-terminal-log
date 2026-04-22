@@ -6,15 +6,18 @@
 //   • Calls board_tick() every loop to drive the flap animation.
 //
 // HTTP API (available after WiFi connects):
+//   All endpoints require the header:  X-Api-Key: <value from secrets.h>
 //
 //   GET  /status           → JSON: wifi, ip, rssi, bars, free_heap, uptime_s
 //
 //   POST /row/<0-5>        → Set a row.  Send text as the request body.
 //                            All three curl styles work:
-//     curl -X POST http://<ip>/row/0 -H "Content-Type: text/plain" -d "HELLO"
-//     curl -X POST http://<ip>/row/0 -d "text=HELLO+WORLD"
-//     curl -X POST http://<ip>/row/0 -d "HELLO WORLD"    (default encoding)
+//     curl -X POST http://<ip>/row/0 -H "X-Api-Key: $KEY" \
+//          -H "Content-Type: text/plain" -d "HELLO"
+//     curl -X POST http://<ip>/row/0 -H "X-Api-Key: $KEY" -d "text=HELLO+WORLD"
+//     curl -X POST http://<ip>/row/0 -H "X-Api-Key: $KEY" -d "HELLO WORLD"
 //
+//   POST /rows             → Set all 6 rows; one line per row, newline-delimited.
 //   DELETE /row/<0-5>/clear → Clear a row (animate to all spaces).
 //
 // Serial output (115200 baud):
@@ -25,15 +28,16 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "travel_board.h"
+#include "secrets.h"
 
-// ─── WiFi credentials ────────────────────────────────────────────────────────
-#define WIFI_SSID "Meraki"
-#define WIFI_PASS "@homewithtoast"
+// ─── Security constants ───────────────────────────────────────────────────────
+#define MAX_BODY_BYTES  512   // reject bodies larger than this
+#define RATE_LIMIT_RPS  10    // max requests per second (global)
 
 // ─── Boot splash (shown while connecting) ────────────────────────────────────
 static const char* kBoot[6] = {
     "INITIALIZING",
-    "ESP32-C3 BOARD",
+    "",          // filled at runtime with chip model — see setup()
     "v1",
     "",
     "",
@@ -52,10 +56,39 @@ static const char* kDemo[6] = {
 
 // ─── Module state ────────────────────────────────────────────────────────────
 static WebServer server(80);
+
+// Rate-limit state: count requests inside the current 1-second window.
+static uint32_t g_rateWindowStart = 0;
+static uint16_t g_rateCount       = 0;
 static uint32_t  g_lastWifiCheckMs = 0;
 static bool      g_demoShown       = false;   // ensure demo is set only once
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Returns true when the X-Api-Key header matches the compiled-in API_KEY.
+// Call this in write handlers; send 401 and return if it returns false.
+static bool authenticated() {
+    if (server.header("X-Api-Key") == API_KEY) return true;
+    server.send(401, "application/json", "{\"error\":\"unauthorized\"}");
+    Serial.println("[HTTP] 401 bad/missing API key");
+    return false;
+}
+
+// Returns true when the global request rate is within RATE_LIMIT_RPS.
+// Call this at the top of every handler; send 429 and return if false.
+static bool rateLimited() {
+    uint32_t now = millis();
+    if (now - g_rateWindowStart >= 1000) {
+        g_rateWindowStart = now;
+        g_rateCount       = 0;
+    }
+    if (++g_rateCount > RATE_LIMIT_RPS) {
+        server.send(429, "application/json", "{\"error\":\"rate limit exceeded\"}");
+        Serial.println("[HTTP] 429 rate limited");
+        return true;
+    }
+    return false;
+}
 
 // Convert RSSI (dBm) to a 0–3 bar count for the display icon.
 static uint8_t rssiToBars(int32_t rssi) {
@@ -70,6 +103,8 @@ static uint8_t rssiToBars(int32_t rssi) {
 // GET /status
 // Returns a JSON snapshot of WiFi state and heap usage.
 static void handleStatus() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
     char buf[256];
     snprintf(buf, sizeof(buf),
         "{\"wifi\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"bars\":%d,"
@@ -102,6 +137,12 @@ static void handleStatus() {
 //
 // In all cases the text is uppercased and sanitised inside board_set_row().
 static void handleSetRow() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    if (server.arg("plain").length() + server.arg("text").length() > MAX_BODY_BYTES) {
+        server.send(413, "application/json", "{\"error\":\"body too large\"}");
+        return;
+    }
     // Extract the row number from the URI: "/row/3" → 3
     int rowNum = server.uri().substring(5).toInt();
     if (rowNum < 0 || rowNum > 5) {
@@ -147,7 +188,13 @@ static void handleSetRow() {
 //        -H "Content-Type: text/plain" \
 //        -d $'FL 101  LONDON\nFL 202  NEW YORK\nFL 303  PARIS\nFL 404  TOKYO\nFL 505  SYDNEY\nFL 606  DUBAI'
 static void handleSetAll() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
     String body = server.arg("plain");
+    if (body.length() > MAX_BODY_BYTES) {
+        server.send(413, "application/json", "{\"error\":\"body too large\"}");
+        return;
+    }
     if (body.isEmpty()) {
         server.send(400, "application/json", "{\"error\":\"empty body — send Content-Type: text/plain\"}");
         return;
@@ -182,6 +229,8 @@ static void handleSetAll() {
 // DELETE /row/<n>/clear
 // Animates the target row to all spaces.
 static void handleClearRow() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
     // URI is "/row/2/clear" → substring(5) = "2/clear" → toInt() = 2
     int rowNum = server.uri().substring(5).toInt();
     if (rowNum < 0 || rowNum > 5) {
@@ -196,8 +245,8 @@ static void handleClearRow() {
 // collectHeaders must be called before server.begin() to make request headers
 // readable inside handlers via server.header("Content-Type").
 static void setupRoutes() {
-    static const char* hdrs[] = {"Content-Type"};
-    server.collectHeaders(hdrs, 1);
+    static const char* hdrs[] = {"Content-Type", "X-Api-Key"};
+    server.collectHeaders(hdrs, 2);
 
     server.on("/status", HTTP_GET,  handleStatus);
     server.on("/rows",   HTTP_POST, handleSetAll);
@@ -253,11 +302,17 @@ void setup() {
     delay(500);   // allow USB-CDC to enumerate before the first print
 
     Serial.println("\n── boot ─────────────────────────────");
-    Serial.printf("  SDK   : %s\n",    ESP.getSdkVersion());
-    Serial.printf("  Heap  : %lu B\n", (unsigned long)ESP.getFreeHeap());
-    Serial.printf("  Chip  : ESP32-C3 rev%d\n", ESP.getChipRevision());
+    Serial.printf("  Chip  : %s rev%d\n", ESP.getChipModel(), ESP.getChipRevision());
+    Serial.printf("  SDK   : %s\n",        ESP.getSdkVersion());
+    Serial.printf("  Heap  : %lu B\n",     (unsigned long)ESP.getFreeHeap());
+    Serial.printf("  SDA   : GPIO%d  SCL : GPIO%d\n", I2C_SDA_PIN, I2C_SCL_PIN);
     Serial.println("────────────────────────────────────");
     Serial.printf("  Connecting to %s …\n", WIFI_SSID);
+
+    // Patch the boot splash row 1 with the actual chip model at runtime.
+    static char chipRow[22];
+    snprintf(chipRow, sizeof(chipRow), "%s BOARD", ESP.getChipModel());
+    kBoot[1] = chipRow;
 
     board_init();
     board_set_all(kBoot);

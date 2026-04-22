@@ -1,13 +1,107 @@
-# Set a row (0–5)
-curl -X POST http://192.168.100.23/row/0 -d "GATE CHANGE B12"
-curl -X POST http://192.168.100.23/row/3 -d "DELAYED 20 MIN"
+# ESP Split-Flap Board — HTTP API
 
-# Clear a row
-curl -X DELETE http://192.168.100.23/row/2/clear
+All requests require the `X-Api-Key` header set to the value defined in `src/secrets.h`.
 
-# Get status JSON
-curl http://192.168.100.23/status
-The status endpoint returns something like:
+```sh
+# Convenient alias — set once per shell session
+KEY="your-api-key-here"
+IP="192.168.100.23"
+```
 
+---
 
-{"wifi":"Meraki","ip":"192.168.100.23","rssi":-62,"bars":2,"free_heap":214320,"min_heap":201440,"uptime_s":47}
+## GET /status
+
+Returns a JSON snapshot of WiFi state and memory.
+
+```sh
+curl http://$IP/status -H "X-Api-Key: $KEY"
+```
+
+Response:
+```json
+{
+  "wifi": "Meraki",
+  "ip": "192.168.100.23",
+  "rssi": -62,
+  "bars": 2,
+  "free_heap": 214320,
+  "min_heap": 201440,
+  "uptime_s": 47
+}
+```
+
+---
+
+## POST /row/\<0-5\>
+
+Set a single row. Row numbers are 0 (top) to 5 (bottom).
+
+**Recommended — plain text body:**
+```sh
+curl -X POST http://$IP/row/0 \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     -d "GATE CHANGE B12"
+```
+
+**Form field style:**
+```sh
+curl -X POST http://$IP/row/3 \
+     -H "X-Api-Key: $KEY" \
+     -d "text=DELAYED+20+MIN"
+```
+
+**Bare body (no content-type):**
+```sh
+curl -X POST http://$IP/row/5 \
+     -H "X-Api-Key: $KEY" \
+     -d "BOARDING NOW"
+```
+
+Text is uppercased and truncated to fit the display automatically.
+
+---
+
+## POST /rows
+
+Set all 6 rows in one request. Send one line per row, newline-separated.
+Fewer than 6 lines leaves the remaining rows unchanged only if you send exactly 6 lines; missing lines are cleared.
+
+```sh
+curl -X POST http://$IP/rows \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     -d $'FL 101  LONDON\nFL 202  NEW YORK\nFL 303  PARIS\nFL 404  TOKYO\nFL 505  SYDNEY\nFL 606  DUBAI'
+```
+
+Or from a file (one line per row, 6 lines):
+```sh
+curl -X POST http://$IP/rows \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     --data-binary @rows.txt
+```
+
+---
+
+## DELETE /row/\<0-5\>/clear
+
+Animate a row to all spaces (blank it out).
+
+```sh
+curl -X DELETE http://$IP/row/2/clear \
+     -H "X-Api-Key: $KEY"
+```
+
+---
+
+## Error responses
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Missing or wrong `X-Api-Key` |
+| 413 | Body exceeds 512 bytes |
+| 429 | Rate limit exceeded (max 10 req/s) |
+| 400 | Bad row number or empty body |
+| 404 | Unknown route |

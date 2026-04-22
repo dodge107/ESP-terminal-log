@@ -45,8 +45,14 @@ static const char kPageUI[] PROGMEM = R"HTML(
 <title>FlipBoard</title>
 <style>
 *{box-sizing:border-box}
-body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0;padding:16px;max-width:480px}
+body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0;padding:16px;max-width:520px}
 h1{font-size:1.1em;letter-spacing:.35em;border-bottom:1px solid #ffaa00;padding-bottom:8px;margin:0 0 14px}
+h2{font-size:.85em;letter-spacing:.2em;color:#ffaa00;margin:20px 0 8px;border-left:2px solid #ffaa00;padding-left:8px}
+h3{font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:14px 0 4px}
+.tabs{display:flex;gap:4px;margin-bottom:16px}
+.tab{flex:1;padding:7px;font-family:monospace;font-size:.8em;letter-spacing:.15em;cursor:pointer;background:#1a1a1a;color:#888;border:1px solid #333;text-align:center}
+.tab.active{background:#ffaa00;color:#0e0e0e;border-color:#ffaa00}
+.page{display:none}.page.active{display:block}
 .field{margin-bottom:10px}
 label{display:block;font-size:.72em;color:#cc8800;margin-bottom:3px}
 input[type=text]{width:100%;background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:1em}
@@ -57,31 +63,134 @@ button{font-family:monospace;font-size:.85em;padding:9px 18px;cursor:pointer;let
 .primary{background:#ffaa00;color:#0e0e0e;border:none;margin-right:8px}
 .danger{background:#880000;color:#fff;border:none}
 #msg{margin-top:10px;font-size:.82em;min-height:1.1em}
+pre{background:#141414;border:1px solid #333;padding:10px;overflow-x:auto;font-size:.8em;line-height:1.5;color:#ffcc66;margin:6px 0 14px}
+p{margin:4px 0 10px;font-size:.82em;line-height:1.6;color:#cc9933}
+code{background:#1a1a1a;padding:1px 5px;color:#ffcc66;font-size:.9em}
+table{width:100%;border-collapse:collapse;font-size:.8em;margin:6px 0 14px}
+td,th{padding:5px 8px;border:1px solid #333;text-align:left}
+th{color:#0e0e0e;background:#cc8800}
+tr:nth-child(even) td{background:#141414}
+.ep{color:#ffaa00;font-weight:bold}
+.method{color:#aaffaa;font-size:.75em;margin-right:6px}
+.auth{color:#ff9944;font-size:.72em;float:right}
 </style>
 </head>
 <body>
 <h1>&#9646; FLIPBOARD</h1>
-<div class="field">
-  <label>API KEY</label>
-  <input type="text" id="key" placeholder="paste api key here">
+
+<div class="tabs">
+  <div class="tab active" onclick="show('board',this)">BOARD</div>
+  <div class="tab" onclick="show('docs',this)">API DOCS</div>
 </div>
-<hr>
-<form id="f">
-  <div class="field"><label>ROW 0</label><input class="row-input" type="text" name="r0" maxlength="21" autocomplete="off"></div>
-  <div class="field"><label>ROW 1</label><input class="row-input" type="text" name="r1" maxlength="21" autocomplete="off"></div>
-  <div class="field"><label>ROW 2</label><input class="row-input" type="text" name="r2" maxlength="21" autocomplete="off"></div>
-  <div class="field"><label>ROW 3</label><input class="row-input" type="text" name="r3" maxlength="21" autocomplete="off"></div>
-  <div class="field"><label>ROW 4</label><input class="row-input" type="text" name="r4" maxlength="21" autocomplete="off"></div>
-  <div class="field"><label>ROW 5</label><input class="row-input" type="text" name="r5" maxlength="21" autocomplete="off"></div>
-  <button type="submit" class="primary">UPDATE BOARD</button>
-</form>
-<div id="msg"></div>
-<hr>
-<button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
+
+<!-- ── BOARD TAB ───────────────────────────────────────────────── -->
+<div id="board" class="page active">
+  <div class="field">
+    <label>API KEY</label>
+    <input type="text" id="key" placeholder="paste api key here">
+  </div>
+  <hr>
+  <form id="f">
+    <div class="field"><label>ROW 0</label><input class="row-input" type="text" name="r0" maxlength="21" autocomplete="off"></div>
+    <div class="field"><label>ROW 1</label><input class="row-input" type="text" name="r1" maxlength="21" autocomplete="off"></div>
+    <div class="field"><label>ROW 2</label><input class="row-input" type="text" name="r2" maxlength="21" autocomplete="off"></div>
+    <div class="field"><label>ROW 3</label><input class="row-input" type="text" name="r3" maxlength="21" autocomplete="off"></div>
+    <div class="field"><label>ROW 4</label><input class="row-input" type="text" name="r4" maxlength="21" autocomplete="off"></div>
+    <div class="field"><label>ROW 5</label><input class="row-input" type="text" name="r5" maxlength="21" autocomplete="off"></div>
+    <button type="submit" class="primary">UPDATE BOARD</button>
+  </form>
+  <div id="msg"></div>
+  <hr>
+  <button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
+</div>
+
+<!-- ── DOCS TAB ────────────────────────────────────────────────── -->
+<div id="docs" class="page">
+
+  <h2>AUTHENTICATION</h2>
+  <p>All endpoints except <code>GET /</code> require the header:</p>
+  <pre>X-Api-Key: your-api-key</pre>
+  <p>The key is defined in <code>src/secrets.h</code> on the device. Generate one with:</p>
+  <pre>openssl rand -hex 16</pre>
+  <p>Requests without a valid key return <code>401 Unauthorized</code>. The rate limit is 10 requests per second; excess requests return <code>429</code>.</p>
+
+  <hr>
+
+  <h2>ENDPOINTS</h2>
+
+  <h3><span class="method">GET</span><span class="ep">/status</span> <span class="auth">requires key</span></h3>
+  <p>Returns a JSON snapshot of WiFi state and memory.</p>
+  <pre>curl http://&lt;ip&gt;/status -H "X-Api-Key: &lt;key&gt;"</pre>
+  <pre>{
+  "wifi":      "MyNetwork",
+  "ip":        "192.168.1.42",
+  "rssi":      -62,
+  "bars":      2,
+  "free_heap": 214320,
+  "min_heap":  201440,
+  "uptime_s":  47
+}</pre>
+
+  <h3><span class="method">POST</span><span class="ep">/row/&lt;0-5&gt;</span> <span class="auth">requires key</span></h3>
+  <p>Set a single row. Text is uppercased automatically. Row 0 is the top row.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/row/0 \
+     -H "X-Api-Key: &lt;key&gt;" \
+     -H "Content-Type: text/plain" \
+     -d "GATE CHANGE B12"</pre>
+  <p>Also accepts form-encoded body: <code>-d "text=DELAYED+20+MIN"</code></p>
+
+  <h3><span class="method">POST</span><span class="ep">/rows</span> <span class="auth">requires key</span></h3>
+  <p>Set all 6 rows in one request. Send <code>Content-Type: text/plain</code> with one line per row, newline-separated. Fewer than 6 lines clears the remaining rows.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/rows \
+     -H "X-Api-Key: &lt;key&gt;" \
+     -H "Content-Type: text/plain" \
+     -d $'FL 101  LONDON\nFL 202  NEW YORK\nFL 303  PARIS\nFL 404  TOKYO\nFL 505  SYDNEY\nFL 606  DUBAI'</pre>
+  <p>Or send from a file (one line per row):</p>
+  <pre>curl -X POST http://&lt;ip&gt;/rows \
+     -H "X-Api-Key: &lt;key&gt;" \
+     -H "Content-Type: text/plain" \
+     --data-binary @rows.txt</pre>
+
+  <h3><span class="method">DELETE</span><span class="ep">/row/&lt;0-5&gt;/clear</span> <span class="auth">requires key</span></h3>
+  <p>Animate a single row to all spaces (blank it out).</p>
+  <pre>curl -X DELETE http://&lt;ip&gt;/row/2/clear \
+     -H "X-Api-Key: &lt;key&gt;"</pre>
+
+  <h3><span class="method">POST</span><span class="ep">/wifi/reset</span> <span class="auth">requires key</span></h3>
+  <p>Clears stored WiFi credentials and reboots into setup mode. The board opens the <code>FLIPBOARD-XXXX</code> access point within a few seconds.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/wifi/reset \
+     -H "X-Api-Key: &lt;key&gt;"</pre>
+
+  <hr>
+
+  <h2>CHARACTERS</h2>
+  <p>The display supports: <code>A-Z 0-9</code> and <code>space - : / . !</code><br>
+  Lowercase is converted to uppercase. Unsupported characters are stripped.</p>
+
+  <hr>
+
+  <h2>ERROR CODES</h2>
+  <table>
+    <tr><th>Status</th><th>Meaning</th></tr>
+    <tr><td>401</td><td>Missing or wrong X-Api-Key</td></tr>
+    <tr><td>400</td><td>Bad row number or empty body</td></tr>
+    <tr><td>413</td><td>Body exceeds 512 bytes</td></tr>
+    <tr><td>429</td><td>Rate limit exceeded (max 10 req/s)</td></tr>
+    <tr><td>404</td><td>Unknown route</td></tr>
+  </table>
+
+</div><!-- /docs -->
+
 <script>
 const keyEl=document.getElementById('key');
 const msg=document.getElementById('msg');
 keyEl.value=localStorage.getItem('fb_key')||'';
+function show(id,tab){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  tab.classList.add('active');
+}
 document.getElementById('f').onsubmit=async e=>{
   e.preventDefault();
   const k=keyEl.value.trim();
@@ -421,12 +530,7 @@ void setup() {
 
     board_init();
     board_set_all(kBoot);
-    // Drive the animation for ~3 s so the boot splash is fully visible before
-    // wm.autoConnect() takes over and loop() stops running.
-    for (uint32_t t = millis() + 3000; millis() < t;) {
-        board_tick();
-        delay(16);
-    }
+    board_settle();   // snap to final text immediately — loop() won't run during WiFiManager
 
     // Build a unique AP name from the lower 16 bits of the chip MAC so multiple
     // boards on the same network don't collide in the config portal.
@@ -445,11 +549,7 @@ void setup() {
         Serial.printf("  No saved WiFi — portal open on AP \"%s\"\n", kPortal[2]);
         board_set_all(kPortal);
         board_set_wifi_bars(0);
-        // Run animation until it settles so the portal splash is fully readable.
-        for (uint32_t t = millis() + 3000; millis() < t;) {
-            board_tick();
-            delay(16);
-        }
+        board_settle();   // snap to final text — portal blocks loop() indefinitely
     });
 
     // Called each time WiFiManager saves new credentials.

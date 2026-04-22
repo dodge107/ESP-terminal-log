@@ -250,6 +250,24 @@ void board_set_all(const char* texts[6]) {
 
 void board_set_speed_ms(uint16_t ms) { g_flipMs = ms; }
 
+// Instantly snap every slot to its target glyph and render one frame.
+// Use this for splash screens where you want text to appear immediately
+// rather than waiting for the full animation (which can take 4–5 seconds).
+void board_settle() {
+    for (uint8_t i = 0; i < NUM_ROWS; i++) {
+        BoardRow& row = g_rows[i];
+        row.active    = false;
+        row.startMs   = 0;
+        for (uint8_t j = 0; j < NUM_COLS; j++) {
+            FlapSlot& sl = row.slots[j];
+            sl.current   = sl.target;
+            sl.flipsLeft = 0;
+            sl.done      = true;
+        }
+    }
+    board_tick();   // render the settled frame immediately
+}
+
 void board_set_wifi_bars(uint8_t bars) { g_wifiBars = bars > 3 ? 3 : bars; }
 void board_set_sep_gap(uint8_t px)     { g_sepGap   = px; }
 

@@ -139,6 +139,8 @@ To switch networks, use the **Reset WiFi Settings** button in the web UI or call
 
 Once connected, open `http://<board-ip>/` in any browser.
 
+![Web UI - BOARD tab showing six row inputs and Update Board button](images/web-ui.png)
+
 The UI has two tabs:
 
 - **BOARD** - enter text for each row and click Update Board. The API key is saved to `localStorage` so you only enter it once per browser.

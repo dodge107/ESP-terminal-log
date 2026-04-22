@@ -1,4 +1,4 @@
-# FlipBoard — HTTP API
+# FlipBoard - HTTP API
 
 ## First-time WiFi setup
 
@@ -12,7 +12,7 @@ On first boot (or after a WiFi reset):
 4. Choose your network, enter the password, and save.
 5. The board connects, saves credentials to NVS, and starts normally.
 
-On every subsequent boot the saved credentials are used automatically — no portal appears.
+On every subsequent boot the saved credentials are used automatically - no portal appears.
 
 To switch networks, use the **Reset WiFi Settings** button in the web UI, or `POST /wifi/reset`.
 
@@ -36,13 +36,13 @@ IP="192.168.100.23"
 
 ## Endpoints
 
-### GET /  — Web UI
+### GET /  - Web UI
 
 Open `http://<ip>/` in any browser. No authentication needed to load the page.
 
-- **API Key** field — saved to `localStorage`, persists across browser sessions.
-- **Six row inputs** — submits all rows at once via `POST /rows`.
-- **Reset WiFi Settings** button — clears NVS credentials and reboots into setup mode.
+- **API Key** field - saved to `localStorage`, persists across browser sessions.
+- **Six row inputs** - submits all rows at once via `POST /rows`.
+- **Reset WiFi Settings** button - clears NVS credentials and reboots into setup mode.
 
 ---
 
@@ -73,7 +73,7 @@ curl http://$IP/status -H "X-Api-Key: $KEY"
 Set a single row. Row numbers are 0 (top) to 5 (bottom). Text is uppercased automatically.
 
 ```sh
-# Recommended — plain text body
+# Recommended - plain text body
 curl -X POST http://$IP/row/0 \
      -H "X-Api-Key: $KEY" \
      -H "Content-Type: text/plain" \

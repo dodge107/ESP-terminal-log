@@ -1,4 +1,4 @@
-// travel_board.cpp — Split-flap notification board driver
+// travel_board.cpp - Split-flap notification board driver
 //
 // Display: SSD1306 OLED, 128×64 px, monochrome, I²C.
 // MCU    : ESP32-C3. SDA = GPIO3, SCL = GPIO4 (adjust at the top if needed).
@@ -7,7 +7,7 @@
 //   Origin (0,0) = top-left corner of the display.
 //   x increases rightward  : 0 … 127  (128 pixels wide).
 //   y increases DOWNWARD   : 0 … 63   (64 pixels tall).
-//   U8g2 drawStr(x, y, s)  : y is the BASELINE — the bottom of uppercase body.
+//   U8g2 drawStr(x, y, s)  : y is the BASELINE - the bottom of uppercase body.
 //
 // ── Font metrics for u8g2_font_5x7_tr ────────────────────────────────────────
 //   Cell width   : 6 px  (5 px glyph + 1 px inter-character gap).
@@ -60,7 +60,7 @@
 //     bars=0 :  only dot  (x=123, y=5)
 //     bars=1 :  + small arc  (x=122 & x=124, y=4)
 //     bars=2 :  + medium arc (x=121 & x=125, y=3)
-//     bars=3 :  + large arc  (x=120 & x=126, y=2)  — strongest signal
+//     bars=3 :  + large arc  (x=120 & x=126, y=2)  - strongest signal
 //
 // ── Alphabet ─────────────────────────────────────────────────────────────────
 //   27 characters: ' ' first, then A–Z.
@@ -88,7 +88,7 @@
 #define NUM_ROWS    6
 #define NUM_COLS    25         // 21 × 6 px + 2 px left pad = 128 px (fills display)
 #define LEFT_PAD    2          // px gap left of column 0
-#define TOP_OFFSET  2          // no top margin — row 0 glyph starts at y=0
+#define TOP_OFFSET  2          // no top margin - row 0 glyph starts at y=0
 #define ASCENT      6          // px above baseline for this font's uppercase
 #define ROW_PITCH   11         // px between baselines: 6 glyph + gap + 1 sep + gap
 
@@ -98,7 +98,7 @@
 // Glyph btm row 5 : y = 61       → bottom margin = 63−61 = 2 px.
 #define BASELINE(row)   (TOP_OFFSET + ASCENT + (row) * ROW_PITCH)   // 6 + row×11
 
-// Separator gap — runtime variable so board_set_sep_gap() can adjust it live.
+// Separator gap - runtime variable so board_set_sep_gap() can adjust it live.
 // Default 2 px gives: glyph · · gap · sep · gap · · glyph.
 static uint8_t g_sepGap = 2;
 
@@ -278,8 +278,8 @@ void board_set_sep_gap(uint8_t px)     { g_sepGap   = px; }
 // Icon layout (x=120…126, y=2…5):
 //
 //   x:  119 120 121 122 123 124 125 126 127   (← all cleared to black first)
-//   y=2:      [L] [ ] [ ] [ ] [ ] [L]         large arc  — shown when bars≥3
-//   y=3:          [M] [ ] [ ] [M]             medium arc — shown when bars≥2
+//   y=2:      [L] [ ] [ ] [ ] [ ] [L]         large arc  - shown when bars≥3
+//   y=3:          [M] [ ] [ ] [M]             medium arc - shown when bars≥2
 //   y=4:              [S] [ ] [S]  wait no...
 //
 // Corrected pixel map (centred at x=123):
@@ -287,7 +287,7 @@ void board_set_sep_gap(uint8_t px)     { g_sepGap   = px; }
 //   y=2 : x=120 ●                     ● x=126   (large arc)
 //   y=3 :     x=121 ●           ● x=125         (medium arc)
 //   y=4 :         x=122 ●   ● x=124             (small arc)
-//   y=5 :               x=123 ●                 (dot — always shown)
+//   y=5 :               x=123 ●                 (dot - always shown)
 //
 static void drawWifi() {
     // ── Step 1: erase the reserved zone ──────────────────────────────────────
@@ -299,20 +299,20 @@ static void drawWifi() {
     u8g2.setDrawColor(1);              // colour 1 = white (draw)
 
     // ── Step 2: draw icon pixels ─────────────────────────────────────────────
-    // Dot — always present regardless of signal strength.
+    // Dot - always present regardless of signal strength.
     u8g2.drawPixel(123, 5);
 
-    // Small arc — one bar of signal (x=122 and x=124 at y=4).
+    // Small arc - one bar of signal (x=122 and x=124 at y=4).
     if (g_wifiBars >= 1) {
         u8g2.drawPixel(122, 4);
         u8g2.drawPixel(124, 4);
     }
-    // Medium arc — two bars (x=121 and x=125 at y=3).
+    // Medium arc - two bars (x=121 and x=125 at y=3).
     if (g_wifiBars >= 2) {
         u8g2.drawPixel(121, 3);
         u8g2.drawPixel(125, 3);
     }
-    // Large arc — three bars / full signal (x=120 and x=126 at y=2).
+    // Large arc - three bars / full signal (x=120 and x=126 at y=2).
     if (g_wifiBars >= 3) {
         u8g2.drawPixel(120, 2);
         u8g2.drawPixel(126, 2);
@@ -329,7 +329,7 @@ void board_tick() {
     // ── Phase 1: advance animation ────────────────────────────────────────────
     for (uint8_t i = 0; i < NUM_ROWS; i++) {
         BoardRow& row = g_rows[i];
-        if (!row.active) continue;   // row is static — nothing to do
+        if (!row.active) continue;   // row is static - nothing to do
 
         bool allDone = true;
         for (uint8_t j = 0; j < NUM_COLS; j++) {
@@ -356,7 +356,7 @@ void board_tick() {
                 sl.done    = true;
             }
         }
-        if (allDone) row.active = false;  // all slots settled — mark row idle
+        if (allDone) row.active = false;  // all slots settled - mark row idle
     }
 
     // ── Phase 2: redraw full frame ────────────────────────────────────────────

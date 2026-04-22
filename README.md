@@ -1,6 +1,6 @@
 # FlipBoard
 
-FlipBoard is a split-flap departure board simulator for the ESP32, rendered on a 128×64 SSD1306 OLED. It recreates the look and feel of the mechanical Solari boards found in airports and train stations — each character slot cycles independently through the alphabet before locking onto its final glyph, with rows cascading one after another in the classic left-to-right, top-to-bottom sequence.
+FlipBoard is a split-flap departure board simulator for the ESP32, rendered on a 128×64 SSD1306 OLED. It recreates the look and feel of the mechanical Solari boards found in airports and train stations - each character slot cycles independently through the alphabet before locking onto its final glyph, with rows cascading one after another in the classic left-to-right, top-to-bottom sequence.
 
 ```
 FL 101  LONDON
@@ -11,13 +11,13 @@ FL 505  SYDNEY
 FL 606  DUBAI
 ```
 
-The display is divided into six fixed-width rows separated by dotted rules. A WiFi signal indicator sits in the top-right corner. Text on any row — or all rows at once — can be updated remotely over WiFi via a secured HTTP API or through a built-in browser UI served directly from the device.
+The display is divided into six fixed-width rows separated by dotted rules. A WiFi signal indicator sits in the top-right corner. Text on any row - or all rows at once - can be updated remotely over WiFi via a secured HTTP API or through a built-in browser UI served directly from the device.
 
 ### Design
 
 The 128×64 pixel display is laid out with an 11-pixel row pitch: 6 pixels of glyph body, 2 pixels of clear space, a 1-pixel dotted separator, and 2 more pixels of clear space before the next row. This fills the display exactly across all six rows with a 2-pixel bottom margin. The font is `u8g2_font_5x7_tr` with a 6-pixel advance, giving up to 21 characters per row from a 2-pixel left margin to the right edge of the display.
 
-The animation engine runs a `FlapSlot` state machine for every character position in the 6×25 grid. When a row is updated, each slot is assigned a flip count of at least one full alphabet lap (37 steps through `A–Z 0–9` plus space) plus the clockwise distance to the target character — so even a one-character change looks mechanically heavy. Slots within a row start 20 ms apart, and rows themselves start 120 ms apart, producing the characteristic cascade. The engine is fully non-blocking: `board_tick()` is called every `loop()` iteration with no `delay()` in the render path.
+The animation engine runs a `FlapSlot` state machine for every character position in the 6×25 grid. When a row is updated, each slot is assigned a flip count of at least one full alphabet lap (37 steps through `A–Z 0–9` plus space) plus the clockwise distance to the target character - so even a one-character change looks mechanically heavy. Slots within a row start 20 ms apart, and rows themselves start 120 ms apart, producing the characteristic cascade. The engine is fully non-blocking: `board_tick()` is called every `loop()` iteration with no `delay()` in the render path.
 
 WiFi credentials are never hardcoded. On first boot the device opens a captive-portal access point; once credentials are saved to NVS the portal never appears again. The HTTP server requires an API key on all write endpoints, enforces a 10 req/s global rate limit, and rejects bodies over 512 bytes.
 
@@ -125,7 +125,7 @@ WiFi credentials are not hardcoded. On first boot the board opens a captive port
 4. Select your network, enter the password, and save.
 5. The board connects, stores the credentials in NVS, and starts normally.
 
-On every subsequent boot the saved credentials are used — no portal appears.
+On every subsequent boot the saved credentials are used - no portal appears.
 
 To switch networks, use the **Reset WiFi Settings** button in the web UI or call `POST /wifi/reset`.
 
@@ -137,8 +137,8 @@ Once connected, open `http://<board-ip>/` in any browser.
 
 The UI has two tabs:
 
-- **BOARD** — enter text for each row and click Update Board. The API key is saved to `localStorage` so you only enter it once per browser.
-- **API DOCS** — inline reference for all HTTP endpoints with curl examples.
+- **BOARD** - enter text for each row and click Update Board. The API key is saved to `localStorage` so you only enter it once per browser.
+- **API DOCS** - inline reference for all HTTP endpoints with curl examples.
 
 The board's IP address is printed in the serial monitor after connecting and is also returned by `GET /status`.
 
@@ -190,7 +190,7 @@ The display accepts `A–Z`, `0–9`, and `space - : / . !`. Lowercase is upperc
 
 ## Changing I²C pins
 
-Edit `platformio.ini` — no source changes needed:
+Edit `platformio.ini` - no source changes needed:
 
 ```ini
 [env:esp32-c3-devkitm-1]
@@ -206,13 +206,13 @@ build_flags =
 
 ```
 src/
-  main.cpp          — WiFi, HTTP server, route handlers, web UI HTML
-  travel_board.cpp  — Display driver, split-flap animation engine
-  travel_board.h    — Public board API
-  secrets.h         — API key (gitignored, create from secrets.h.example)
-  secrets.h.example — Template to copy and fill in
-platformio.ini      — Build environments for C3 and S3
-api.md              — Full API reference
+  main.cpp          - WiFi, HTTP server, route handlers, web UI HTML
+  travel_board.cpp  - Display driver, split-flap animation engine
+  travel_board.h    - Public board API
+  secrets.h         - API key (gitignored, create from secrets.h.example)
+  secrets.h.example - Template to copy and fill in
+platformio.ini      - Build environments for C3 and S3
+api.md              - Full API reference
 ```
 
 ---
@@ -252,7 +252,7 @@ The compiled key sits in the ESP32's flash memory. Anyone with physical access a
 The browser UI submits to `POST /rows` via JavaScript `fetch()`. A malicious page open in another tab on the same browser could make the same request if it knows the board's IP and the API key (which is in `localStorage`). Standard CSRF tokens are not implemented.
 
 **`localStorage` key storage**
-The API key is saved to `localStorage` for convenience. Any JavaScript running on the same origin can read it. Since this page is served directly from the board (no CDN, no third-party scripts), the risk is low — but it is not a hardened credential store.
+The API key is saved to `localStorage` for convenience. Any JavaScript running on the same origin can read it. Since this page is served directly from the board (no CDN, no third-party scripts), the risk is low - but it is not a hardened credential store.
 
 **No authentication on `GET /`**
 The web UI page loads without a key so the form is accessible in a browser. The actual data-writing requests still require the key, but the existence and IP of the device are exposed to anyone on the network.
@@ -263,5 +263,5 @@ The HTTP server listens on all interfaces on port 80. There is no firewall, IP a
 ### Recommended deployment posture
 
 - Place the board on a dedicated IoT VLAN with no internet access and no cross-VLAN routing to untrusted devices.
-- Treat the API key as a low-value shared secret — sufficient to prevent casual interference, not sufficient to protect sensitive data.
+- Treat the API key as a low-value shared secret - sufficient to prevent casual interference, not sufficient to protect sensitive data.
 - Do not expose port 80 to the internet directly.

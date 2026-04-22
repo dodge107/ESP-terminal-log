@@ -1,4 +1,4 @@
-// main.cpp — Application entry point
+// main.cpp - Application entry point
 //
 // Responsibilities:
 //   • Connects to WiFi and keeps the board's signal-strength icon updated.
@@ -201,7 +201,7 @@ document.getElementById('f').onsubmit=async e=>{
   try{
     const r=await fetch('/rows',{method:'POST',
       headers:{'Content-Type':'text/plain','X-Api-Key':k},body});
-    msg.textContent=r.ok?'Board updated.':'Error '+r.status+' — check API key?';
+    msg.textContent=r.ok?'Board updated.':'Error '+r.status+' - check API key?';
   }catch(err){msg.textContent='Failed: '+err;}
 };
 async function resetWifi(){
@@ -220,7 +220,7 @@ async function resetWifi(){
 // ─── Boot splash (shown while connecting) ────────────────────────────────────
 static const char* kBoot[6] = {
     "INITIALIZING",
-    "",          // filled at runtime with chip model — see setup()
+    "",          // filled at runtime with chip model - see setup()
     "v1",
     "",
     "",
@@ -228,7 +228,7 @@ static const char* kBoot[6] = {
 };
 
 // ─── Config portal splash (shown while waiting for WiFi setup) ───────────────
-// Row 2 is patched at runtime with the AP SSID — see setup().
+// Row 2 is patched at runtime with the AP SSID - see setup().
 static const char* kPortal[6] = {
     "WIFI SETUP",
     "JOIN NETWORK",
@@ -315,15 +315,15 @@ static void handleStatus() {
 // POST /row/<n>
 // Reads the text body and calls board_set_row().
 //
-// Body retrieval strategy — tried in order until one succeeds:
+// Body retrieval strategy - tried in order until one succeeds:
 //
-//   1. arg("plain")  — populated when Content-Type is text/plain.
+//   1. arg("plain")  - populated when Content-Type is text/plain.
 //      Used by:  curl -H "Content-Type: text/plain" -d "HELLO WORLD"
 //
-//   2. arg("text")   — populated when the form body contains "text=VALUE".
+//   2. arg("text")   - populated when the form body contains "text=VALUE".
 //      Used by:  curl -d "text=HELLO+WORLD"
 //
-//   3. Join all arg names — curl's default form-encoding sends the raw body
+//   3. Join all arg names - curl's default form-encoding sends the raw body
 //      as a sequence of "keys" (the text split at '=' boundaries).
 //      Each word may become a separate argName when spaces are not URL-encoded.
 //      Used by:  curl -d "HELLO WORLD"      (least reliable, but handled)
@@ -389,7 +389,7 @@ static void handleSetAll() {
         return;
     }
     if (body.isEmpty()) {
-        server.send(400, "application/json", "{\"error\":\"empty body — send Content-Type: text/plain\"}");
+        server.send(400, "application/json", "{\"error\":\"empty body - send Content-Type: text/plain\"}");
         return;
     }
 
@@ -530,7 +530,7 @@ void setup() {
 
     board_init();
     board_set_all(kBoot);
-    board_settle();   // snap to final text immediately — loop() won't run during WiFiManager
+    board_settle();   // snap to final text immediately - loop() won't run during WiFiManager
 
     // Build a unique AP name from the lower 16 bits of the chip MAC so multiple
     // boards on the same network don't collide in the config portal.
@@ -546,21 +546,21 @@ void setup() {
 
     // Called when stored credentials fail and the AP/portal opens.
     wm.setAPCallback([](WiFiManager*) {
-        Serial.printf("  No saved WiFi — portal open on AP \"%s\"\n", kPortal[2]);
+        Serial.printf("  No saved WiFi - portal open on AP \"%s\"\n", kPortal[2]);
         board_set_all(kPortal);
         board_set_wifi_bars(0);
-        board_settle();   // snap to final text — portal blocks loop() indefinitely
+        board_settle();   // snap to final text - portal blocks loop() indefinitely
     });
 
     // Called each time WiFiManager saves new credentials.
     wm.setSaveConfigCallback([]() {
-        Serial.println("  WiFi credentials saved — connecting…");
+        Serial.println("  WiFi credentials saved - connecting…");
     });
 
     Serial.println("  Starting WiFiManager…");
     if (!wm.autoConnect(apName)) {
-        // Portal timed out with no connection — restart and try again.
-        Serial.println("  Config portal timed out — restarting");
+        // Portal timed out with no connection - restart and try again.
+        Serial.println("  Config portal timed out - restarting");
         ESP.restart();
     }
 
@@ -573,7 +573,7 @@ void setup() {
 
 void loop() {
     // Let the WebServer process any pending HTTP request.
-    // This must run every loop() — long blocking calls will stall it.
+    // This must run every loop() - long blocking calls will stall it.
     server.handleClient();
 
     // Drive the flap animation and push the frame to the display.

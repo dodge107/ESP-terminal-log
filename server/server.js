@@ -155,7 +155,7 @@ app.get('/', (req, res) => res.send(`<!DOCTYPE html>
 <title>FlipBoard Server</title>
 <style>
 *{box-sizing:border-box}
-body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0;padding:16px;max-width:540px}
+body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0 auto;padding:16px;max-width:540px}
 h1{font-size:1.1em;letter-spacing:.35em;border-bottom:1px solid #ffaa00;padding-bottom:8px;margin:0 0 14px}
 h2{font-size:.85em;letter-spacing:.2em;margin:20px 0 8px;border-left:2px solid #ffaa00;padding-left:8px}
 .field{margin-bottom:10px}
@@ -188,12 +188,6 @@ hr{border:none;border-top:1px solid #2a2a2a;margin:18px 0}
 ${[0,1,2,3,4,5].map(i=>`<div class="field"><label>ROW ${i}</label><input class="row-input" type="text" name="r${i}" maxlength="21" autocomplete="off"></div>`).join('')}
 <button type="submit" class="primary">SEND ALL ROWS</button>
 </form>
-
-<hr>
-<h2>SINGLE ROW</h2>
-<div class="field"><label>ROW NUMBER (0-5)</label><input type="text" id="rowNum" value="0" style="width:60px"></div>
-<div class="field"><label>TEXT</label><input class="row-input" type="text" id="rowText" maxlength="21" autocomplete="off"></div>
-<button class="primary" onclick="sendRow()">SEND ROW</button>
 
 <hr>
 <h2>BRIGHTNESS</h2>
@@ -289,5 +283,5 @@ setInterval(refreshBoards, 5000);
 
 server.listen(PORT, () => {
     console.log(`FlipBoard server running on http://localhost:${PORT}`);
-    console.log(`Boards authenticate with their API key — each key is a separate tenant.`);
+    console.log(`Boards authenticate with their API key — each key is a separate tenant.Caution: boards currently do not support TLS, keep this server on a trusted network!`);
 });

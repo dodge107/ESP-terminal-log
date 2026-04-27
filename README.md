@@ -169,7 +169,22 @@ pio run -e esp32-s3-devkitc-1 --target upload
 pio device monitor -e esp32-c3-devkitm-1
 ```
 
-Output is at 115200 baud. You will see boot stats, WiFi events, and a status block every 5 seconds.
+Output is at 115200 baud. You will see boot stats, WiFi events, and a status block every 5 seconds:
+
+```
+── status ──────────────────────────
+  WiFi      : MyNetwork
+  IP        : 192.168.1.42
+  RSSI      : -62 dBm (2 bars)
+  Socket.IO : connected  192.168.1.10:3500
+  Brightness: 78%
+  Heap free : 214320 bytes
+  Heap min  : 201440 bytes
+  Uptime    : 47 s
+────────────────────────────────────
+```
+
+The Socket.IO line shows `connected`, `connecting`, or `disabled` along with the configured host and port. Brightness reflects the current user-set level.
 
 ---
 

@@ -89,7 +89,7 @@ static const char kPageUI[] PROGMEM = R"HTML(
 <title>FlipBoard</title>
 <style>
 *{box-sizing:border-box}
-body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0;padding:16px;max-width:520px}
+body{background:#0e0e0e;color:#ffaa00;font-family:monospace;margin:0 auto;padding:16px;max-width:520px}
 h1{font-size:1.1em;letter-spacing:.35em;border-bottom:1px solid #ffaa00;padding-bottom:8px;margin:0 0 14px}
 h2{font-size:.85em;letter-spacing:.2em;color:#ffaa00;margin:20px 0 8px;border-left:2px solid #ffaa00;padding-left:8px}
 h3{font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:14px 0 4px}
@@ -897,13 +897,23 @@ static void setupRoutes() {
 static void printStatus() {
     Serial.println("── status ──────────────────────────");
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("  WiFi   : %s\n",        WiFi.SSID().c_str());
-        Serial.printf("  IP     : %s\n",        WiFi.localIP().toString().c_str());
-        Serial.printf("  RSSI   : %d dBm (%d bars)\n",
+        Serial.printf("  WiFi      : %s\n",   WiFi.SSID().c_str());
+        Serial.printf("  IP        : %s\n",   WiFi.localIP().toString().c_str());
+        Serial.printf("  RSSI      : %d dBm (%d bars)\n",
                       WiFi.RSSI(), rssiToBars(WiFi.RSSI()));
     } else {
-        Serial.printf("  WiFi   : disconnected (status %d)\n", WiFi.status());
+        Serial.printf("  WiFi      : disconnected (status %d)\n", WiFi.status());
     }
+    if (g_sio.enabled) {
+        if (sio_connected()) {
+            Serial.printf("  Socket.IO : connected  %s:%d\n", g_sio.host, g_sio.port);
+        } else {
+            Serial.printf("  Socket.IO : connecting  %s:%d\n", g_sio.host, g_sio.port);
+        }
+    } else {
+        Serial.println("  Socket.IO : disabled");
+    }
+    Serial.printf("  Brightness: %u%%\n",      board_get_brightness());
     Serial.printf("  Heap free : %lu bytes\n", (unsigned long)ESP.getFreeHeap());
     Serial.printf("  Heap min  : %lu bytes\n", (unsigned long)ESP.getMinFreeHeap());
     Serial.printf("  Uptime    : %lu s\n",     millis() / 1000);

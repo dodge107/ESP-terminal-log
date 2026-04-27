@@ -123,14 +123,15 @@ static uint16_t g_flipMs   = 60;    // ms between consecutive glyph advances
 static uint8_t  g_wifiBars = 0;     // 0–3; updated by the caller
 
 // ─── Burn-in protection ───────────────────────────────────────────────────────
-#define BURNIN_DIM_MS   (30UL  * 1000UL)   // 30 s → dim to ~10 % contrast
-#define BURNIN_OFF_MS   (10UL  * 60UL * 1000UL)  // 10 min → power-save off
+#define BURNIN_DIM_MS        (30UL * 1000UL)          // 30 s → dim to ~10 % contrast
+#define BURNIN_OFF_MS_DEFAULT (10UL * 60UL * 1000UL)  // 10 min default → power-save off
 #define CONTRAST_FULL   200
 #define CONTRAST_DIM    25
 
 typedef enum { DISP_FULL, DISP_DIM, DISP_OFF } DispState;
-static DispState g_dispState  = DISP_FULL;
-static uint32_t  g_lastDataMs = 0;   // millis() of the last board_wake() call
+static DispState g_dispState    = DISP_FULL;
+static uint32_t  g_lastDataMs   = 0;                    // millis() of the last board_wake() call
+static uint32_t  g_offTimeoutMs = BURNIN_OFF_MS_DEFAULT; // runtime-overridable power-off threshold
 
 // ─── Per-slot animation state ────────────────────────────────────────────────
 // One FlapSlot per character position in the grid.
@@ -222,6 +223,7 @@ void board_init() {
     Wire.begin(I2C_SDA, I2C_SCL);
     u8g2.begin();
     u8g2.setFont(u8g2_font_5x7_tf);
+    g_lastDataMs = millis();   // start idle clock from boot
 
     // All slots start as settled spaces so the display is blank on boot.
     for (uint8_t i = 0; i < NUM_ROWS; i++) {
@@ -290,6 +292,10 @@ void board_wake() {
     }
 }
 
+void board_set_off_timeout_ms(uint32_t ms) {
+    g_offTimeoutMs = ms;
+}
+
 // ─── Drawing: WiFi icon ───────────────────────────────────────────────────────
 // The icon lives in the top-right corner.  It is drawn AFTER the row text so
 // it paints over any characters that overflow into the reserved area.
@@ -346,12 +352,12 @@ void board_tick() {
     uint32_t now = millis();
 
     // ── Burn-in protection: dim then power-off when idle ──────────────────────
-    if (g_lastDataMs > 0) {
+    {
         uint32_t idle = now - g_lastDataMs;
         if (g_dispState == DISP_FULL && idle >= BURNIN_DIM_MS) {
             u8g2.setContrast(CONTRAST_DIM);
             g_dispState = DISP_DIM;
-        } else if (g_dispState == DISP_DIM && idle >= BURNIN_OFF_MS) {
+        } else if (g_dispState == DISP_DIM && idle >= g_offTimeoutMs) {
             u8g2.setPowerSave(1);
             g_dispState = DISP_OFF;
         }

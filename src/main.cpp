@@ -101,6 +101,12 @@ tr:nth-child(even) td{background:#141414}
   </form>
   <div id="msg"></div>
   <hr>
+  <div class="field">
+    <label>DISPLAY OFF TIMEOUT (MINUTES, 0 = NEVER)</label>
+    <input type="text" id="timeout" placeholder="10" style="width:80px">
+    <button type="button" class="primary" style="margin-left:8px" onclick="setTimeo()">SET</button>
+  </div>
+  <hr>
   <button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
 </div>
 
@@ -161,6 +167,13 @@ tr:nth-child(even) td{background:#141414}
   <pre>curl -X POST http://&lt;ip&gt;/wifi/reset \
      -H "X-Api-Key: &lt;key&gt;"</pre>
 
+  <h3><span class="method">POST</span><span class="ep">/display/timeout</span> <span class="auth">requires key</span></h3>
+  <p>Override the idle power-off timeout for this session. Send the number of minutes as a plain text body. Use <code>0</code> to disable power-off entirely. Resets to the 10-minute default on reboot.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/display/timeout \
+     -H "X-Api-Key: &lt;key&gt;" \
+     -H "Content-Type: text/plain" \
+     -d "30"</pre>
+
   <hr>
 
   <h2>CHARACTERS</h2>
@@ -211,6 +224,18 @@ async function resetWifi(){
   msg.textContent='Resetting…';
   try{await fetch('/wifi/reset',{method:'POST',headers:{'X-Api-Key':k}});}catch(e){}
   msg.textContent='Board rebooting into WiFi setup mode…';
+}
+async function setTimeo(){
+  const k=keyEl.value.trim();
+  localStorage.setItem('fb_key',k);
+  const v=document.getElementById('timeout').value.trim();
+  if(v===''||isNaN(v)){msg.textContent='Enter a number of minutes (0 = never off).';return;}
+  msg.textContent='Updating…';
+  try{
+    const r=await fetch('/display/timeout',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v});
+    msg.textContent=r.ok?'Timeout updated.':'Error '+r.status;
+  }catch(err){msg.textContent='Failed: '+err;}
 }
 </script>
 </body>
@@ -437,6 +462,30 @@ static void handleClearRow() {
     server.send(200, "text/plain", "ok");
 }
 
+// POST /display/timeout
+// Override the idle power-off timeout for this session (not persisted across reboots).
+// Body: plain integer number of minutes, e.g. "30" or "0" to disable power-off.
+static void handleSetTimeout() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String body = server.arg("plain");
+    body.trim();
+    if (body.isEmpty()) {
+        server.send(400, "application/json", "{\"error\":\"send minutes as plain text body\"}");
+        return;
+    }
+    int mins = body.toInt();
+    if (mins < 0 || mins > 1440) {
+        server.send(400, "application/json", "{\"error\":\"minutes must be 0-1440\"}");
+        return;
+    }
+    // 0 = disable power-off by setting an effectively unreachable timeout (49 days).
+    uint32_t ms = mins == 0 ? 0xFFFFFFFFUL : (uint32_t)mins * 60UL * 1000UL;
+    board_set_off_timeout_ms(ms);
+    Serial.printf("[HTTP] POST /display/timeout  %d min\n", mins);
+    server.send(200, "text/plain", "ok");
+}
+
 // GET /
 // Serves the browser-based control UI. No authentication required so the
 // page loads in any browser; the API key is entered inside the page itself.
@@ -464,10 +513,11 @@ static void setupRoutes() {
     static const char* hdrs[] = {"Content-Type", "X-Api-Key"};
     server.collectHeaders(hdrs, 2);
 
-    server.on("/",           HTTP_GET,  handleUI);
-    server.on("/wifi/reset", HTTP_POST, handleWifiReset);
-    server.on("/status",     HTTP_GET,  handleStatus);
-    server.on("/rows",       HTTP_POST, handleSetAll);
+    server.on("/",                  HTTP_GET,  handleUI);
+    server.on("/wifi/reset",        HTTP_POST, handleWifiReset);
+    server.on("/status",            HTTP_GET,  handleStatus);
+    server.on("/rows",              HTTP_POST, handleSetAll);
+    server.on("/display/timeout",   HTTP_POST, handleSetTimeout);
 
     // Register one POST and one DELETE handler per row (rows 0–5).
     for (int i = 0; i <= 5; i++) {

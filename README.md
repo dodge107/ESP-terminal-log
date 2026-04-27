@@ -204,6 +204,85 @@ The display accepts `A–Z`, `0–9`, and `space - : / . !`. Lowercase is upperc
 
 ---
 
+## Shell script
+
+`scripts/flipboard.sh` is a Bash CLI for controlling the board from any Linux or macOS terminal. It requires `curl` and `bash` 3.2 or later (no extra dependencies).
+
+### Setup
+
+```sh
+chmod +x scripts/flipboard.sh
+
+# First run — save your board IP and API key
+./scripts/flipboard.sh configure
+```
+
+Credentials are saved to `~/.flipboard_config` (mode 600) and reused on every subsequent call. You can also pass them as environment variables without saving:
+
+```sh
+BOARD_IP_OVERRIDE=192.168.1.42 API_KEY_OVERRIDE=yourkey ./scripts/flipboard.sh status
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `configure` | Save board IP and API key |
+| `status` | Print board status JSON |
+| `row <0-5> [text]` | Set a single row |
+| `rows` | Set all 6 rows interactively |
+| `clear <0-5>` | Animate a row to blank |
+| `clear-all` | Blank every row |
+| `preset` | Load a built-in preset (flight board, stock ticker, custom) |
+| `timeout [minutes]` | Override display off timeout; `0` = never power off |
+| `wifi-reset` | Erase saved WiFi credentials and reboot |
+| *(no command)* | Launch the interactive menu |
+
+### Examples
+
+```sh
+# Set a single row directly
+./scripts/flipboard.sh row 0 "GATE CHANGE B12"
+
+# Set all 6 rows interactively
+./scripts/flipboard.sh rows
+
+# Load the flight-board preset
+./scripts/flipboard.sh preset
+
+# Keep the display on all night (0 = never off)
+./scripts/flipboard.sh timeout 0
+
+# Restore the default 10-minute power-off
+./scripts/flipboard.sh timeout 10
+
+# Check WiFi and memory
+./scripts/flipboard.sh status
+
+# Launch the interactive menu
+./scripts/flipboard.sh
+```
+
+### Interactive menu
+
+Running the script with no arguments opens a numbered menu — useful for one-off updates without remembering command syntax:
+
+```
+FlipBoard Controller  (192.168.1.42)
+  1) Set one row
+  2) Set all rows
+  3) Clear one row
+  4) Clear all rows
+  5) Load a preset
+  6) Get board status
+  7) Set display off timeout
+  8) Configure (IP / API key)
+  9) Reset WiFi
+  q) Quit
+```
+
+---
+
 ## Changing I²C pins
 
 Edit `platformio.ini` - no source changes needed:

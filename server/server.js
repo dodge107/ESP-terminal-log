@@ -133,6 +133,28 @@ app.post('/api/timeout', (req, res) => {
     res.json({ ok: true });
 });
 
+// POST /api/led/mode  { led: 1|2, mode: "on"|"off"|"flash"|"pulse" }
+app.post('/api/led/mode', (req, res) => {
+    const key = requireKey(req, res); if (!key) return;
+    const { led, mode } = req.body;
+    if (!led || !['on','off','flash','pulse'].includes(mode))
+        return res.status(400).json({ error: 'led (1|2) and mode (on|off|flash|pulse) required' });
+    emit(key, 'led_mode', { led: parseInt(led), mode });
+    res.json({ ok: true });
+});
+
+// POST /api/led/brightness  { led: 1|2, percent: 0-100 }
+app.post('/api/led/brightness', (req, res) => {
+    const key = requireKey(req, res); if (!key) return;
+    const { led, percent } = req.body;
+    if (!led || percent === undefined) return res.status(400).json({ error: 'led and percent required' });
+    const pct = parseInt(percent);
+    if (isNaN(pct) || pct < 0 || pct > 100)
+        return res.status(400).json({ error: 'percent must be 0-100' });
+    emit(key, 'led_brightness', { led: parseInt(led), percent: pct });
+    res.json({ ok: true });
+});
+
 // POST /api/brightness  { percent }
 app.post('/api/brightness', (req, res) => {
     const key = requireKey(req, res); if (!key) return;
@@ -200,6 +222,37 @@ ${[0,1,2,3,4,5].map(i=>`<div class="field"><label>ROW ${i}</label><input class="
 </div>
 
 <hr>
+<h2>LED INDICATORS</h2>
+<div style="margin-bottom:14px">
+  <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:5px">LED 1</label>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+    <button class="primary" onclick="ledMode(1,'off')">OFF</button>
+    <button class="primary" onclick="ledMode(1,'on')">ON</button>
+    <button class="primary" onclick="ledMode(1,'flash')">FLASH</button>
+    <button class="primary" onclick="ledMode(1,'pulse')">PULSE</button>
+  </div>
+  <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:3px">BRIGHTNESS — <span id="ls1">100</span>%</label>
+  <input type="range" id="lb1" min="0" max="100" value="100"
+    style="width:100%;accent-color:#ffaa00"
+    oninput="document.getElementById('ls1').textContent=this.value"
+    onchange="ledBright(1,this.value)">
+</div>
+<div style="margin-bottom:14px">
+  <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:5px">LED 2</label>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+    <button class="primary" onclick="ledMode(2,'off')">OFF</button>
+    <button class="primary" onclick="ledMode(2,'on')">ON</button>
+    <button class="primary" onclick="ledMode(2,'flash')">FLASH</button>
+    <button class="primary" onclick="ledMode(2,'pulse')">PULSE</button>
+  </div>
+  <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:3px">BRIGHTNESS — <span id="ls2">100</span>%</label>
+  <input type="range" id="lb2" min="0" max="100" value="100"
+    style="width:100%;accent-color:#ffaa00"
+    oninput="document.getElementById('ls2').textContent=this.value"
+    onchange="ledBright(2,this.value)">
+</div>
+
+<hr>
 <h2>CONTROLS</h2>
 <button class="primary" onclick="api('/api/wake','{}')">WAKE + REPLAY</button>
 <button class="primary" id="demoBtn" onclick="toggleDemo()">START DEMO</button>
@@ -249,6 +302,13 @@ function sendRow() {
   const row  = parseInt(document.getElementById('rowNum').value);
   const text = document.getElementById('rowText').value.toUpperCase();
   api('/api/row', JSON.stringify({ row, text }));
+}
+
+function ledMode(n, mode) {
+  api('/api/led/mode', JSON.stringify({ led: n, mode }));
+}
+function ledBright(n, v) {
+  api('/api/led/brightness', JSON.stringify({ led: n, percent: parseInt(v) }));
 }
 
 async function toggleDemo() {

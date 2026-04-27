@@ -248,6 +248,71 @@ cmd_set_timeout() {
   fi
 }
 
+cmd_led() {
+  require_config
+  local n="${1:-}"
+  local mode="${2:-}"
+  if [[ -z "$n" ]]; then
+    read -rp "  LED number [1/2]: " n
+  fi
+  if [[ ! "$n" =~ ^[12]$ ]]; then
+    err "LED must be 1 or 2"; exit 1
+  fi
+  if [[ -z "$mode" ]]; then
+    read -rp "  Mode [on/off/flash/pulse]: " mode
+  fi
+  mode=$(echo "$mode" | tr '[:upper:]' '[:lower:]')
+  if [[ "$mode" != "on" && "$mode" != "off" && "$mode" != "flash" && "$mode" != "pulse" ]]; then
+    err "Mode must be on, off, flash, or pulse"; exit 1
+  fi
+  log "Setting LED $n to $mode…"
+  API POST "/led/$n/mode" "$mode" > /dev/null
+  ok "LED $n set to $mode"
+}
+
+cmd_led_bright() {
+  require_config
+  local n="${1:-}"
+  local pct="${2:-}"
+  if [[ -z "$n" ]]; then
+    read -rp "  LED number [1/2]: " n
+  fi
+  if [[ ! "$n" =~ ^[12]$ ]]; then
+    err "LED must be 1 or 2"; exit 1
+  fi
+  if [[ -z "$pct" ]]; then
+    read -rp "  Brightness 0-100: " pct
+  fi
+  if [[ ! "$pct" =~ ^[0-9]+$ ]] || (( pct > 100 )); then
+    err "Brightness must be 0-100"; exit 1
+  fi
+  log "Setting LED $n brightness to $pct%…"
+  API POST "/led/$n/brightness" "$pct" > /dev/null
+  ok "LED $n brightness set to $pct%"
+}
+
+cmd_led_notify() {
+  require_config
+  local n="${1:-}"
+  local state="${2:-}"
+  if [[ -z "$n" ]]; then
+    read -rp "  LED number [1/2]: " n
+  fi
+  if [[ ! "$n" =~ ^[12]$ ]]; then
+    err "LED must be 1 or 2"; exit 1
+  fi
+  if [[ -z "$state" ]]; then
+    read -rp "  Notify on new content/wake [on/off]: " state
+  fi
+  state=$(echo "$state" | tr '[:upper:]' '[:lower:]')
+  if [[ "$state" != "on" && "$state" != "off" ]]; then
+    err "State must be on or off"; exit 1
+  fi
+  log "Setting LED $n notify to $state…"
+  API POST "/led/$n/notify" "$state" > /dev/null
+  ok "LED $n notify $state"
+}
+
 cmd_brightness() {
   require_config
   local pct="${1:-}"
@@ -286,6 +351,9 @@ cmd_interactive() {
     echo "  8) Wake display"
     echo "  9) Set display off timeout"
     echo "  b) Set brightness"
+    echo "  l) Set LED mode"
+    echo "  L) Set LED brightness"
+    echo "  n) Set LED notify"
     echo "  0) Configure (IP / API key)"
     echo "  r) Reset WiFi"
     echo "  q) Quit"
@@ -302,6 +370,9 @@ cmd_interactive() {
       8) cmd_wake ;;
       9) cmd_set_timeout ;;
       b|B) cmd_brightness ;;
+      l)   cmd_led ;;
+      L)   cmd_led_bright ;;
+      n|N) cmd_led_notify ;;
       0) cmd_configure ;;
       r|R) cmd_wifi_reset ;;
       q|Q) echo "Bye!"; exit 0 ;;
@@ -328,6 +399,9 @@ usage() {
   echo -e "  wake                  Wake display and replay current content"
   echo -e "  timeout [minutes]     Set display off timeout (0 = never)"
   echo -e "  brightness [0-100]    Set display brightness percentage"
+  echo -e "  led <1|2> [mode]      Set LED mode: on, off, flash, pulse"
+  echo -e "  led-bright <1|2> [%]  Set LED brightness 0-100"
+  echo -e "  led-notify <1|2> [on|off]  Auto-flash LED on new content or wake"
   echo -e "  wifi-reset            Erase WiFi credentials and reboot"
   echo -e "  (no command)          Launch interactive menu"
   echo -e ""
@@ -362,6 +436,9 @@ case "${1:-}" in
   wake)        cmd_wake ;;
   timeout)     cmd_set_timeout "${2:-}" ;;
   brightness)  cmd_brightness "${2:-}" ;;
+  led)         cmd_led        "${2:-}" "${3:-}" ;;
+  led-bright)  cmd_led_bright "${2:-}" "${3:-}" ;;
+  led-notify)  cmd_led_notify "${2:-}" "${3:-}" ;;
   wifi-reset)  cmd_wifi_reset ;;
   -h|--help)   usage ;;
   "")          cmd_interactive ;;

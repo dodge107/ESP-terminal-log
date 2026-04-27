@@ -16,6 +16,7 @@
 
 #include "sio_client.h"
 #include "travel_board.h"
+#include "led_indicator.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
 
@@ -346,12 +347,15 @@ static void handleTextFrame(const char* p, size_t len) {
 static void dispatch(const char* event, JsonVariantConst data) {
     Serial.printf("[SIO] event: %s\n", event);
 
+    extern void triggerContentNotify();
+
     if (strcmp(event, "set_row") == 0) {
         int row = data["row"] | -1;
         const char* text = data["text"] | "";
         if (row < 0 || row > 5) return;
         board_wake();
         board_set_row((uint8_t)row, text);
+        triggerContentNotify();
 
     } else if (strcmp(event, "set_all") == 0) {
         JsonArrayConst rows = data["rows"].as<JsonArrayConst>();
@@ -369,6 +373,7 @@ static void dispatch(const char* event, JsonVariantConst data) {
         }
         board_wake();
         board_set_all(ptrs);
+        triggerContentNotify();
 
     } else if (strcmp(event, "clear_row") == 0) {
         int row = data["row"] | -1;
@@ -395,5 +400,19 @@ static void dispatch(const char* event, JsonVariantConst data) {
         int pct = data["percent"] | -1;
         if (pct < 0 || pct > 100) return;
         board_set_brightness((uint8_t)pct);
+
+    } else if (strcmp(event, "led_mode") == 0) {
+        int led = (data["led"] | -1);
+        if (led < 1 || led > 2) return;
+        const char* modeStr = data["mode"] | "off";
+        led_set_mode((uint8_t)(led - 1), led_mode_from_str(modeStr));
+
+    } else if (strcmp(event, "led_brightness") == 0) {
+        int led = (data["led"] | -1);
+        if (led < 1 || led > 2) return;
+        int pct = data["percent"] | -1;
+        if (pct < 0 || pct > 100) return;
+        led_set_brightness((uint8_t)(led - 1), (uint8_t)pct);
+
     }
 }

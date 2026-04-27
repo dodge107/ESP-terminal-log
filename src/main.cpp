@@ -33,6 +33,7 @@
 #include "travel_board.h"
 #include "secrets.h"
 #include "sio_client.h"
+#include "led_indicator.h"
 
 // ─── Security constants ───────────────────────────────────────────────────────
 #define MAX_BODY_BYTES  512   // reject bodies larger than this
@@ -162,6 +163,45 @@ tr:nth-child(even) td{background:#141414}
   <div class="field">
     <label>DEMO MODE (CYCLES ALL PRESETS EVERY 30 S)</label>
     <button type="button" id="demoBtn" class="primary" onclick="toggleDemo()">START DEMO</button>
+  </div>
+  <hr>
+  <h2>LED INDICATORS</h2>
+  <p style="font-size:.78em;color:#888;margin:0 0 10px">Requires LED1_PIN / LED2_PIN build flags. Controls are always visible.</p>
+  <h3 style="font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:12px 0 6px">LED 1</h3>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+    <button class="primary" onclick="ledMode(1,'off')">OFF</button>
+    <button class="primary" onclick="ledMode(1,'on')">ON</button>
+    <button class="primary" onclick="ledMode(1,'flash')">FLASH</button>
+    <button class="primary" onclick="ledMode(1,'pulse')">PULSE</button>
+  </div>
+  <div class="field">
+    <label>LED 1 BRIGHTNESS — <span id="lb1val">100</span>%</label>
+    <input type="range" id="lb1" min="0" max="100" value="100"
+      style="width:100%;accent-color:#ffaa00"
+      oninput="document.getElementById('lb1val').textContent=this.value"
+      onchange="ledBright(1,this.value)">
+  </div>
+  <div class="field">
+    <label><input type="checkbox" id="ln1" onchange="ledNotify(1,this.checked)" style="accent-color:#ffaa00">
+    &nbsp;NOTIFY ON NEW MESSAGE / WAKE</label>
+  </div>
+  <h3 style="font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:12px 0 6px">LED 2</h3>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+    <button class="primary" onclick="ledMode(2,'off')">OFF</button>
+    <button class="primary" onclick="ledMode(2,'on')">ON</button>
+    <button class="primary" onclick="ledMode(2,'flash')">FLASH</button>
+    <button class="primary" onclick="ledMode(2,'pulse')">PULSE</button>
+  </div>
+  <div class="field">
+    <label>LED 2 BRIGHTNESS — <span id="lb2val">100</span>%</label>
+    <input type="range" id="lb2" min="0" max="100" value="100"
+      style="width:100%;accent-color:#ffaa00"
+      oninput="document.getElementById('lb2val').textContent=this.value"
+      onchange="ledBright(2,this.value)">
+  </div>
+  <div class="field">
+    <label><input type="checkbox" id="ln2" onchange="ledNotify(2,this.checked)" style="accent-color:#ffaa00">
+    &nbsp;NOTIFY ON NEW MESSAGE / WAKE</label>
   </div>
   <hr>
   <button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
@@ -424,6 +464,40 @@ async function wakeDisplay(){
     msg.textContent=r.ok?'Display woken.':'Error '+r.status;
   }catch(err){msg.textContent='Failed: '+err;}
 }
+async function ledMode(n,mode){
+  const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
+  try{ await fetch('/led/'+n+'/mode',{method:'POST',
+    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:mode}); }
+  catch(e){msg.textContent='LED failed: '+e;}
+}
+async function ledBright(n,v){
+  const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
+  try{ await fetch('/led/'+n+'/brightness',{method:'POST',
+    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v}); }
+  catch(e){msg.textContent='LED failed: '+e;}
+}
+async function ledNotify(n,en){
+  const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
+  try{ await fetch('/led/'+n+'/notify',{method:'POST',
+    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:en?'on':'off'}); }
+  catch(e){msg.textContent='LED failed: '+e;}
+}
+// Seed LED controls from live status on load
+(async()=>{
+  try{
+    const k=keyEl.value.trim(); if(!k) return;
+    const r=await fetch('/led/status',{headers:{'X-Api-Key':k}});
+    if(!r.ok) return;
+    const j=await r.json();
+    ['led1','led2'].forEach((key,i)=>{
+      const n=i+1;
+      const b=j[key].brightness;
+      document.getElementById('lb'+n).value=b;
+      document.getElementById('lb'+n+'val').textContent=b;
+      document.getElementById('ln'+n).checked=j[key].notify;
+    });
+  }catch(e){}
+})();
 async function setTimeo(){
   const k=keyEl.value.trim();
   localStorage.setItem('fb_key',k);
@@ -479,6 +553,12 @@ static uint8_t  g_demoIndex   = 0;
 static uint32_t g_demoLastMs  = 0;
 #define DEMO_INTERVAL_MS  (30UL * 1000UL)
 
+// Boot status splash
+static char     g_apName[20]          = {};   // "FLIPBOARD-XXXX", set in setup()
+static bool     g_bootStatus          = false; // true while the status page is displayed
+static uint32_t g_bootStatusUntilMs   = 0;
+#define BOOT_STATUS_MS  (60UL * 1000UL)
+
 // Wake-source state
 #ifdef WAKE_BTN_PIN
 static uint32_t g_lastBtnMs    = 0;      // debounce timestamp
@@ -523,6 +603,9 @@ static uint8_t rssiToBars(int32_t rssi) {
     return 0;                    // weak / disconnected
 }
 
+// Forward declaration — defined after the wake helpers below.
+void triggerContentNotify();
+
 // ─── HTTP handlers ───────────────────────────────────────────────────────────
 
 // GET /status
@@ -530,10 +613,12 @@ static uint8_t rssiToBars(int32_t rssi) {
 static void handleStatus() {
     if (rateLimited()) return;
     if (!authenticated()) return;
-    char buf[256];
+    char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"wifi\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"bars\":%d,"
-        "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu,\"brightness\":%u}",
+        "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu,\"brightness\":%u,"
+        "\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s},"
+        "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s}}",
         WiFi.SSID().c_str(),
         WiFi.localIP().toString().c_str(),
         (int)WiFi.RSSI(),
@@ -541,7 +626,9 @@ static void handleStatus() {
         (unsigned long)ESP.getFreeHeap(),
         (unsigned long)ESP.getMinFreeHeap(),
         millis() / 1000,
-        board_get_brightness());
+        board_get_brightness(),
+        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_get_notify(0) ? "true" : "false",
+        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_get_notify(1) ? "true" : "false");
     server.send(200, "application/json", buf);
 }
 
@@ -601,9 +688,11 @@ static void handleSetRow() {
     Serial.printf("[HTTP] POST /row/%d  args=%d  body=\"%s\"\n",
                   rowNum, server.args(), body.c_str());
 
-    g_demoMode = false;
+    g_demoMode   = false;
+    g_bootStatus = false;
     board_wake();
     board_set_row((uint8_t)rowNum, body.c_str());
+    triggerContentNotify();
     server.send(200, "text/plain", "ok");
 }
 
@@ -650,9 +739,11 @@ static void handleSetAll() {
     for (uint8_t i = 0; i < 6; i++)
         Serial.printf("  [%d] \"%s\"\n", i, texts[i] ? texts[i] : "");
 
-    g_demoMode = false;
+    g_demoMode   = false;
+    g_bootStatus = false;
     board_wake();
     board_set_all(texts);
+    triggerContentNotify();
     server.send(200, "text/plain", "ok");
 }
 
@@ -687,6 +778,7 @@ static void handleDemo() {
 
     if (body == "on") {
         g_demoMode   = true;
+        g_bootStatus = false;
         g_demoIndex  = esp_random() % kPresetCount;
         g_demoLastMs = millis();
         board_wake();
@@ -704,7 +796,8 @@ static void handleDemo() {
 
 // Called by sio_client.cpp to toggle demo mode without duplicating the logic.
 void triggerDemoMode(bool on) {
-    g_demoMode = on;
+    g_demoMode   = on;
+    g_bootStatus = false;
     if (on) {
         g_demoIndex  = esp_random() % kPresetCount;
         g_demoLastMs = millis();
@@ -712,6 +805,13 @@ void triggerDemoMode(bool on) {
         board_set_all(kPresets[g_demoIndex]);
     }
     Serial.printf("[SIO] demo mode %s\n", on ? "on" : "off");
+}
+
+// Fire notification flash on any LED that has notify enabled.
+// Called on new content from HTTP or Socket.IO.
+void triggerContentNotify() {
+    for (uint8_t i = 0; i < 2; i++)
+        if (led_get_notify(i)) led_notify(i);
 }
 
 // Shared wake logic: restore display and replay animation.
@@ -749,6 +849,62 @@ static void handleSetBrightness() {
     board_set_brightness((uint8_t)pct);
     Serial.printf("[HTTP] POST /display/brightness  %d%%\n", pct);
     server.send(200, "text/plain", "ok");
+}
+
+// POST /led/<1|2>/mode   body: on | off | flash | pulse
+// POST /led/<1|2>/brightness   body: 0-100
+// POST /led/<1|2>/notify   body: on | off
+// GET  /led/status
+static void handleLedMode() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    // URI: /led/1/mode or /led/2/mode  → digit at position 5
+    int n = server.uri().charAt(5) - '1';
+    if (n < 0 || n > 1) { server.send(400, "text/plain", "led must be 1 or 2"); return; }
+    String body = server.arg("plain"); body.trim();
+    for (int i = 0; i < (int)body.length(); i++) body[i] = tolower(body[i]);
+    LedMode mode = led_mode_from_str(body.c_str());
+    led_set_mode((uint8_t)n, mode);
+    Serial.printf("[HTTP] POST /led/%d/mode  %s\n", n + 1, led_mode_str(mode));
+    server.send(200, "text/plain", "ok");
+}
+
+static void handleLedBrightness() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    int n = server.uri().charAt(5) - '1';
+    if (n < 0 || n > 1) { server.send(400, "text/plain", "led must be 1 or 2"); return; }
+    String body = server.arg("plain"); body.trim();
+    int pct = body.toInt();
+    if (pct < 0 || pct > 100) { server.send(400, "text/plain", "brightness must be 0-100"); return; }
+    led_set_brightness((uint8_t)n, (uint8_t)pct);
+    Serial.printf("[HTTP] POST /led/%d/brightness  %d%%\n", n + 1, pct);
+    server.send(200, "text/plain", "ok");
+}
+
+static void handleLedNotify() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    int n = server.uri().charAt(5) - '1';
+    if (n < 0 || n > 1) { server.send(400, "text/plain", "led must be 1 or 2"); return; }
+    String body = server.arg("plain"); body.trim();
+    for (int i = 0; i < (int)body.length(); i++) body[i] = tolower(body[i]);
+    bool en = (body == "on" || body == "1" || body == "true");
+    led_set_notify((uint8_t)n, en);
+    Serial.printf("[HTTP] POST /led/%d/notify  %s\n", n + 1, en ? "on" : "off");
+    server.send(200, "text/plain", "ok");
+}
+
+static void handleLedStatus() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+        "{\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s},"
+         "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s}}",
+        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_get_notify(0) ? "true" : "false",
+        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_get_notify(1) ? "true" : "false");
+    server.send(200, "application/json", buf);
 }
 
 // POST /display/timeout
@@ -865,6 +1021,12 @@ static void setupRoutes() {
     server.on("/display/demo",      HTTP_POST, handleDemo);
     server.on("/config/sio",        HTTP_GET,  handleGetSioConfig);
     server.on("/config/sio",        HTTP_POST, handlePostSioConfig);
+    server.on("/led/status",        HTTP_GET,  handleLedStatus);
+    for (int i = 1; i <= 2; i++) {
+        server.on(String("/led/") + i + "/mode",       HTTP_POST, handleLedMode);
+        server.on(String("/led/") + i + "/brightness", HTTP_POST, handleLedBrightness);
+        server.on(String("/led/") + i + "/notify",     HTTP_POST, handleLedNotify);
+    }
 
     // Register one POST and one DELETE handler per row (rows 0–5).
     for (int i = 0; i <= 5; i++) {
@@ -892,6 +1054,43 @@ static void setupRoutes() {
     Serial.println("  HTTP server started on port 80");
 }
 
+// ─── Boot status splash ───────────────────────────────────────────────────────
+// Displayed on the board immediately after WiFi connects.  Shows hostname, IP,
+// SSID, RSSI, Socket.IO state, and brightness.  Held for BOOT_STATUS_MS (60 s)
+// then replaced by a random preset.  Cancelled immediately if real content
+// arrives via the API, Socket.IO, or demo mode.
+static void showBootStatus() {
+    static char r0[22], r1[22], r2[22], r3[22], r4[22], r5[22];
+
+    // Row 0: board hostname  e.g. "FLIPBOARD-3A4F"
+    snprintf(r0, sizeof(r0), "%.21s", g_apName);
+
+    // Row 1: IP address  e.g. "IP 192.168.1.42"
+    snprintf(r1, sizeof(r1), "IP %.17s", WiFi.localIP().toString().c_str());
+
+    // Row 2: WiFi SSID (truncated to 21 chars)
+    snprintf(r2, sizeof(r2), "%.21s", WiFi.SSID().c_str());
+
+    // Row 3: RSSI  e.g. "RSSI -62 DBM"
+    snprintf(r3, sizeof(r3), "RSSI %d DBM", (int)WiFi.RSSI());
+
+    // Row 4: Socket.IO  e.g. "SIO CONNECTED" / "SIO DISABLED"
+    if (g_sio.enabled && strlen(g_sio.host) > 0) {
+        snprintf(r4, sizeof(r4), "SIO %.16s", sio_connected() ? "CONNECTED" : "CONNECTING");
+    } else {
+        snprintf(r4, sizeof(r4), "SIO DISABLED");
+    }
+
+    // Row 5: brightness  e.g. "BRIGHTNESS 78"
+    snprintf(r5, sizeof(r5), "BRIGHTNESS %u", board_get_brightness());
+
+    const char* rows[6] = { r0, r1, r2, r3, r4, r5 };
+    board_wake();
+    board_set_all(rows);
+    g_bootStatus        = true;
+    g_bootStatusUntilMs = millis() + BOOT_STATUS_MS;
+}
+
 // ─── Serial status block ─────────────────────────────────────────────────────
 // Printed every 5 s by loop() so you can watch WiFi and memory at a glance.
 static void printStatus() {
@@ -914,6 +1113,12 @@ static void printStatus() {
         Serial.println("  Socket.IO : disabled");
     }
     Serial.printf("  Brightness: %u%%\n",      board_get_brightness());
+    Serial.printf("  LED 1     : %s  %u%%  notify=%s\n",
+                  led_mode_str(led_get_mode(0)), led_get_brightness(0),
+                  led_get_notify(0) ? "on" : "off");
+    Serial.printf("  LED 2     : %s  %u%%  notify=%s\n",
+                  led_mode_str(led_get_mode(1)), led_get_brightness(1),
+                  led_get_notify(1) ? "on" : "off");
     Serial.printf("  Heap free : %lu bytes\n", (unsigned long)ESP.getFreeHeap());
     Serial.printf("  Heap min  : %lu bytes\n", (unsigned long)ESP.getMinFreeHeap());
     Serial.printf("  Uptime    : %lu s\n",     millis() / 1000);
@@ -948,17 +1153,17 @@ void setup() {
 #endif
 
     board_init();
+    led_init();
     board_set_all(kBoot);
     board_settle();   // snap to final text immediately - loop() won't run during WiFiManager
 
     // Build a unique AP name from the lower 16 bits of the chip MAC so multiple
     // boards on the same network don't collide in the config portal.
-    static char apName[20];
-    snprintf(apName, sizeof(apName), "FLIPBOARD-%04X",
+    snprintf(g_apName, sizeof(g_apName), "FLIPBOARD-%04X",
              (uint16_t)(ESP.getEfuseMac() >> 32));
 
     // Pre-patch the portal splash with the AP name before the callback fires.
-    kPortal[2] = apName;
+    kPortal[2] = g_apName;
 
     // Load Socket.IO config from NVS so the portal fields show current values.
     sioLoadConfig();
@@ -984,7 +1189,7 @@ void setup() {
 
     // Called when stored credentials fail and the AP/portal opens.
     wm.setAPCallback([](WiFiManager*) {
-        Serial.printf("  No saved WiFi - portal open on AP \"%s\"\n", kPortal[2]);
+        Serial.printf("  No saved WiFi - portal open on AP \"%s\"\n", g_apName);
         board_set_all(kPortal);
         board_set_wifi_bars(0);
         board_settle();   // snap to final text - portal blocks loop() indefinitely
@@ -1009,7 +1214,7 @@ void setup() {
     });
 
     Serial.println("  Starting WiFiManager…");
-    if (!wm.autoConnect(apName)) {
+    if (!wm.autoConnect(g_apName)) {
         // Portal timed out with no connection - restart and try again.
         Serial.println("  Config portal timed out - restarting");
         ESP.restart();
@@ -1018,8 +1223,8 @@ void setup() {
     Serial.printf("  Connected!  SSID: %s  IP: %s\n",
                   WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     board_set_wifi_bars(rssiToBars(WiFi.RSSI()));
-    board_set_all(kPresets[esp_random() % kPresetCount]);
     setupRoutes();
+    showBootStatus();   // display IP / hostname for 60 s, then a random preset
 
     if (g_sio.enabled && strlen(g_sio.host) > 0) {
         sio_init(g_sio.host, g_sio.port, API_KEY);
@@ -1042,6 +1247,7 @@ void loop() {
         if (!state && g_lastBtnState && (now - g_lastBtnMs) > 50) {
             g_lastBtnMs = now;
             triggerWake("button");
+            triggerContentNotify();
         }
         g_lastBtnState = state;
     }
@@ -1050,18 +1256,27 @@ void loop() {
     {
         bool state = digitalRead(WAKE_RADAR_PIN);  // HIGH = presence detected
         // Rising edge only — don't re-trigger while presence is held
-        if (state && !g_lastRadarState) triggerWake("radar");
+        if (state && !g_lastRadarState) { triggerWake("radar"); triggerContentNotify(); }
         g_lastRadarState = state;
     }
 #endif
 
     // Drive the flap animation and push the frame to the display.
     board_tick();
+    led_tick();
 
     // Process incoming Socket.IO events (no-op if disabled).
     if (g_sio.enabled) sio_tick();
 
     uint32_t now = millis();
+
+    // ── Boot status: transition to a random preset after 60 s ────────────────
+    if (g_bootStatus && now >= g_bootStatusUntilMs) {
+        g_bootStatus = false;
+        g_demoIndex  = esp_random() % kPresetCount;
+        board_wake();
+        board_set_all(kPresets[g_demoIndex]);
+    }
 
     // ── Demo mode: cycle presets every 30 s ──────────────────────────────────
     if (g_demoMode && (now - g_demoLastMs) >= DEMO_INTERVAL_MS) {

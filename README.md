@@ -169,7 +169,31 @@ pio run -e esp32-s3-devkitc-1 --target upload
 pio device monitor -e esp32-c3-devkitm-1
 ```
 
-Output is at 115200 baud. You will see boot stats, WiFi events, and a status block every 5 seconds:
+Output is at 115200 baud. You will see boot stats, WiFi events, and a status block every 5 seconds.
+
+### Boot status splash
+
+Immediately after connecting to WiFi the board displays a 6-row status screen for 60 seconds so you can easily read the assigned IP without opening a serial monitor:
+
+```
+FLIPBOARD-3A4F
+IP 192.168.1.42
+MYNETWORK
+RSSI -62 DBM
+SIO CONNECTED
+BRIGHTNESS 78
+```
+
+| Row | Content |
+|-----|---------|
+| 0 | Board hostname (`FLIPBOARD-XXXX`) |
+| 1 | IP address |
+| 2 | WiFi SSID |
+| 3 | RSSI in dBm |
+| 4 | Socket.IO state: `CONNECTED`, `CONNECTING`, or `DISABLED` |
+| 5 | Current brightness % |
+
+After 60 seconds the display transitions to a random preset with the normal cascade animation. The splash is cancelled immediately if any real content arrives via the API, Socket.IO, or demo mode.
 
 ```
 ── status ──────────────────────────
@@ -178,13 +202,17 @@ Output is at 115200 baud. You will see boot stats, WiFi events, and a status blo
   RSSI      : -62 dBm (2 bars)
   Socket.IO : connected  192.168.1.10:3500
   Brightness: 78%
+  LED 1     : pulse  100%  notify=on
+  LED 2     : off    100%  notify=off
   Heap free : 214320 bytes
   Heap min  : 201440 bytes
   Uptime    : 47 s
 ────────────────────────────────────
 ```
 
-The Socket.IO line shows `connected`, `connecting`, or `disabled` along with the configured host and port. Brightness reflects the current user-set level.
+The Socket.IO line shows `connected`, `connecting`, or `disabled` along with the configured host and port. Brightness reflects the current user-set level. LED lines show mode, brightness percentage, and whether notification flash is enabled.
+
+
 
 ---
 
@@ -240,6 +268,10 @@ IP="192.168.1.42"
 | `POST` | `/display/timeout` | Set idle power-off timeout (minutes, 0 = never) |
 | `GET` | `/config/sio` | Read current Socket.IO config and connection state |
 | `POST` | `/config/sio` | Update Socket.IO config and reconnect immediately |
+| `GET` | `/led/status` | LED state for both indicators as JSON |
+| `POST` | `/led/<1\|2>/mode` | Set LED mode (`on`, `off`, `flash`, `pulse`) |
+| `POST` | `/led/<1\|2>/brightness` | Set LED brightness 0–100 |
+| `POST` | `/led/<1\|2>/notify` | Enable/disable notification flash (`on` / `off`) |
 | `POST` | `/wifi/reset` | Clear WiFi credentials and reboot |
 
 ### Examples
@@ -310,8 +342,103 @@ The display accepts `A–Z`, `0–9`, and `space - : / . !`. Lowercase is upperc
   "free_heap": 214320,
   "min_heap":  201440,
   "uptime_s":  47,
-  "brightness": 78
+  "brightness": 78,
+  "led1": { "mode": "pulse", "brightness": 100, "notify": true },
+  "led2": { "mode": "off",   "brightness": 100, "notify": false }
 }
+```
+
+---
+
+## LED indicators
+
+Up to two PWM indicator LEDs can be wired to any free GPIO pins. Each LED is independently controlled with four modes, adjustable brightness, and an optional notification behaviour.
+
+### Wiring
+
+Connect each LED's anode through a current-limiting resistor (~220 Ω) to the GPIO, and the cathode to GND. The LEDC peripheral drives the pin at 5 kHz, 8-bit resolution.
+
+Enable in `platformio.ini`:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -DI2C_SDA_PIN=3
+    -DI2C_SCL_PIN=4
+    -DLED1_PIN=10
+    -DLED2_PIN=11
+```
+
+Either pin is optional — define only one if you have a single LED.
+
+### Modes
+
+| Mode | Behaviour |
+|------|-----------|
+| `off` | Always off |
+| `on` | Always on at set brightness |
+| `flash` | 500 ms on / 500 ms off |
+| `pulse` | Sine-wave breathing over a 3-second cycle |
+
+### Notification mode
+
+Each LED can be set to auto-flash for 3 seconds when triggered by:
+
+- A new message received via any interface (HTTP API, Socket.IO)
+- A button press or mmWave radar detection (if those wake sources are enabled)
+
+The LED returns to its previous mode after the notification ends.
+
+### Interfaces
+
+| Interface | How |
+|-----------|-----|
+| Web UI | LED section on the BOARD tab — mode buttons, brightness slider, notify checkbox |
+| HTTP API | `POST /led/<1\|2>/mode`, `POST /led/<1\|2>/brightness`, `POST /led/<1\|2>/notify` |
+| Shell script | `led`, `led-bright`, `led-notify` commands; `l`, `L`, `n` menu options |
+| Socket.IO | `led_mode` and `led_brightness` events from the server |
+| Server dashboard | Mode buttons and brightness sliders for each LED |
+
+### HTTP examples
+
+```sh
+# Set LED 1 to pulse mode
+curl -X POST http://$IP/led/1/mode \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     -d "pulse"
+
+# Set LED 2 brightness to 60%
+curl -X POST http://$IP/led/2/brightness \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     -d "60"
+
+# Enable notification flash on LED 1
+curl -X POST http://$IP/led/1/notify \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     -d "on"
+
+# Get LED status
+curl http://$IP/led/status -H "X-Api-Key: $KEY"
+```
+
+LED status response:
+```json
+{
+  "led1": { "mode": "pulse", "brightness": 100, "notify": true },
+  "led2": { "mode": "off",   "brightness": 100, "notify": false }
+}
+```
+
+### Shell script examples
+
+```sh
+./scripts/flipboard.sh led 1 pulse
+./scripts/flipboard.sh led-bright 1 60
+./scripts/flipboard.sh led-notify 1 on
+./scripts/flipboard.sh led 2 flash
 ```
 
 ---
@@ -422,6 +549,8 @@ The dashboard stores the key in `localStorage`. All REST calls include `X-Api-Ke
 | `demo` | `{ mode: "on"\|"off" }` | Toggle demo mode |
 | `timeout` | `{ minutes }` | Set idle power-off timeout |
 | `brightness` | `{ percent }` | Set brightness 0–100 |
+| `led_mode` | `{ led: 1\|2, mode }` | Set LED mode: `on`, `off`, `flash`, `pulse` |
+| `led_brightness` | `{ led: 1\|2, percent }` | Set LED brightness 0–100 |
 
 ---
 
@@ -517,6 +646,9 @@ BOARD_IP_OVERRIDE=192.168.1.42 API_KEY_OVERRIDE=yourkey ./scripts/flipboard.sh s
 | `wake` | Wake display and replay current content |
 | `timeout [minutes]` | Override display off timeout; `0` = never power off |
 | `brightness [0-100]` | Set display brightness percentage |
+| `led <1\|2> [mode]` | Set LED mode: `on`, `off`, `flash`, `pulse` |
+| `led-bright <1\|2> [%]` | Set LED brightness 0–100 |
+| `led-notify <1\|2> [on\|off]` | Enable/disable notification flash on new content or wake |
 | `wifi-reset` | Erase saved WiFi credentials and reboot |
 | *(no command)* | Launch the interactive menu |
 
@@ -591,6 +723,8 @@ src/
   travel_board.h    - Public board API
   sio_client.cpp    - Socket.IO / WebSocket client (ws:// only, no library)
   sio_client.h      - Socket.IO client public API
+  led_indicator.cpp - PWM LED driver (off/on/flash/pulse, notification mode)
+  led_indicator.h   - LED public API
   presets.h         - All demo presets (add new ones here freely)
   secrets.h         - API key (gitignored, create from secrets.h.example)
   secrets.h.example - Template to copy and fill in

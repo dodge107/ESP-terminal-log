@@ -82,7 +82,7 @@ Built-in preset categories: international flights, trains (SA, UK, Germany, Japa
 
 | Component | Details |
 |-----------|---------|
-| MCU | ESP32-C3 DevKitM-1 or ESP32-S3 DevKitC-1 |
+| MCU | ESP32-C3 DevKitM-1 |
 | Display | SSD1306 OLED, 128×64 px, I²C |
 | Interface | USB-C (native USB-CDC, no UART bridge needed) |
 | Optional | Momentary push-button (any free GPIO → GND) |
@@ -99,16 +99,7 @@ Built-in preset categories: international flights, trains (SA, UK, Germany, Japa
 | SDA | GPIO3 |
 | SCL | GPIO4 |
 
-#### ESP32-S3 DevKitC-1
-
-| OLED pin | ESP32-S3 pin |
-|----------|-------------|
-| VCC | 3V3 |
-| GND | GND |
-| SDA | GPIO8 |
-| SCL | GPIO9 |
-
-The I²C pins can be changed per-board in `platformio.ini` without touching any source files.
+The I²C pins can be changed in `platformio.ini` without touching any source files.
 
 ---
 
@@ -156,11 +147,7 @@ Paste the output into `src/secrets.h`:
 **CLI:**
 
 ```sh
-# ESP32-C3
 pio run -e esp32-c3-devkitm-1 --target upload
-
-# ESP32-S3
-pio run -e esp32-s3-devkitc-1 --target upload
 ```
 
 ### 5. Monitor serial output
@@ -461,7 +448,7 @@ Brightness is set as a percentage (0–100) and applied immediately to the OLED 
 
 The board can connect to a Socket.IO server for real-time push updates — no polling, near-instant delivery. This uses plain `ws://` (no TLS), so the server needs to be on your local network or a host that does not force HTTPS.
 
-The WebSocket client is implemented directly over `WiFiClient` (no external library), keeping the build clean on both the C3 and S3. The client is fully non-blocking — reconnection is deferred until the current animation finishes, so a server reconnect never stalls a mid-flip display.
+The WebSocket client is implemented directly over `WiFiClient` (no external library). The client is fully non-blocking — reconnection is deferred until the current animation finishes, so a server reconnect never stalls a mid-flip display.
 
 ### Configure via the web UI
 
@@ -573,10 +560,10 @@ The `wake` event from the Socket.IO server has the same effect as the HTTP endpo
 
 Wire a momentary push-button between a free GPIO and GND. The pin is configured with an internal pull-up so no external resistor is needed. A 50 ms software debounce is applied.
 
-| Button pin | ESP32-C3 suggestion | ESP32-S3 suggestion |
-|-----------|--------------------|--------------------|
-| One leg | GPIO5 | GPIO1 |
-| Other leg | GND | GND |
+| Button pin | ESP32-C3 pin |
+|-----------|-------------|
+| One leg | GPIO5 |
+| Other leg | GND |
 
 Enable in `platformio.ini`:
 
@@ -733,7 +720,7 @@ server/
   package.json      - Server dependencies (express, socket.io)
 scripts/
   flipboard.sh      - Bash CLI for controlling the board
-platformio.ini      - Build environments for C3 and S3
+platformio.ini      - Build environment for ESP32-C3
 ```
 
 ---

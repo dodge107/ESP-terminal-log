@@ -122,6 +122,16 @@ static U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(
 static uint16_t g_flipMs   = 60;    // ms between consecutive glyph advances
 static uint8_t  g_wifiBars = 0;     // 0–3; updated by the caller
 
+// ─── Burn-in protection ───────────────────────────────────────────────────────
+#define BURNIN_DIM_MS   (30UL  * 1000UL)   // 30 s → dim to ~10 % contrast
+#define BURNIN_OFF_MS   (10UL  * 60UL * 1000UL)  // 10 min → power-save off
+#define CONTRAST_FULL   200
+#define CONTRAST_DIM    25
+
+typedef enum { DISP_FULL, DISP_DIM, DISP_OFF } DispState;
+static DispState g_dispState  = DISP_FULL;
+static uint32_t  g_lastDataMs = 0;   // millis() of the last board_wake() call
+
 // ─── Per-slot animation state ────────────────────────────────────────────────
 // One FlapSlot per character position in the grid.
 typedef struct {
@@ -271,6 +281,15 @@ void board_settle() {
 void board_set_wifi_bars(uint8_t bars) { g_wifiBars = bars > 3 ? 3 : bars; }
 void board_set_sep_gap(uint8_t px)     { g_sepGap   = px; }
 
+void board_wake() {
+    g_lastDataMs = millis();
+    if (g_dispState != DISP_FULL) {
+        if (g_dispState == DISP_OFF) u8g2.setPowerSave(0);
+        u8g2.setContrast(CONTRAST_FULL);
+        g_dispState = DISP_FULL;
+    }
+}
+
 // ─── Drawing: WiFi icon ───────────────────────────────────────────────────────
 // The icon lives in the top-right corner.  It is drawn AFTER the row text so
 // it paints over any characters that overflow into the reserved area.
@@ -325,6 +344,20 @@ static void drawWifi() {
 // No delay() is used; the function is fully non-blocking.
 void board_tick() {
     uint32_t now = millis();
+
+    // ── Burn-in protection: dim then power-off when idle ──────────────────────
+    if (g_lastDataMs > 0) {
+        uint32_t idle = now - g_lastDataMs;
+        if (g_dispState == DISP_FULL && idle >= BURNIN_DIM_MS) {
+            u8g2.setContrast(CONTRAST_DIM);
+            g_dispState = DISP_DIM;
+        } else if (g_dispState == DISP_DIM && idle >= BURNIN_OFF_MS) {
+            u8g2.setPowerSave(1);
+            g_dispState = DISP_OFF;
+        }
+    }
+
+    if (g_dispState == DISP_OFF) return;   // display is off - skip redraw
 
     // ── Phase 1: advance animation ────────────────────────────────────────────
     for (uint8_t i = 0; i < NUM_ROWS; i++) {

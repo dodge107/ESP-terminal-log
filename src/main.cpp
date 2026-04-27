@@ -368,6 +368,7 @@ static void handleSetRow() {
     Serial.printf("[HTTP] POST /row/%d  args=%d  body=\"%s\"\n",
                   rowNum, server.args(), body.c_str());
 
+    board_wake();
     board_set_row((uint8_t)rowNum, body.c_str());
     server.send(200, "text/plain", "ok");
 }
@@ -415,6 +416,7 @@ static void handleSetAll() {
     for (uint8_t i = 0; i < 6; i++)
         Serial.printf("  [%d] \"%s\"\n", i, texts[i] ? texts[i] : "");
 
+    board_wake();
     board_set_all(texts);
     server.send(200, "text/plain", "ok");
 }
@@ -430,6 +432,7 @@ static void handleClearRow() {
         server.send(400, "text/plain", "row must be 0-5");
         return;
     }
+    board_wake();
     board_clear_row((uint8_t)rowNum);
     server.send(200, "text/plain", "ok");
 }

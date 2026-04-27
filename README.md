@@ -33,6 +33,8 @@ The animation engine runs a `FlapSlot` state machine for every character positio
 
 WiFi credentials are never hardcoded. On first boot the device opens a captive-portal access point; once credentials are saved to NVS the portal never appears again. The HTTP server requires an API key on all write endpoints, enforces a 10 req/s global rate limit, and rejects bodies over 512 bytes.
 
+The display includes burn-in protection: after 30 seconds of inactivity the contrast is dimmed to ~10%; after 10 minutes the panel is powered off entirely. Any incoming data via the API restores full brightness immediately.
+
 ---
 
 ## Hardware

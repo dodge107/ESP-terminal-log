@@ -322,59 +322,8 @@ static const char* kPortal[6] = {
     ""
 };
 
-// ─── Demo content (shown once WiFi connects) ─────────────────────────────────
-// ─── Demo presets (one is chosen at random on each boot) ─────────────────────
-static const char* kPresets[][6] = {
-    {   // Flights
-        "FL 101  LONDON",
-        "FL 202  NEW YORK",
-        "FL 303  PARIS",
-        "FL 404  TOKYO",
-        "FL 505  SYDNEY",
-        "FL 606  DUBAI"
-    },
-    {   // Stock ticker
-        "AAPL  172.45 +1.2%",
-        "TSLA  248.10 -0.8%",
-        "NVDA  875.22 +3.4%",
-        "BTC   67420 +2.1%",
-        "ETH    3510 +1.7%",
-        "SPY   523.80 +0.5%"
-    },
-    {   // Train departures
-        "08.14  CAPE TOWN",
-        "08.32  DURBAN",
-        "09.05  PRETORIA",
-        "09.47  PORT ELIZ",
-        "10.20  BLOEMFONT",
-        "11.00  KIMBERLEY"
-    },
-    {   // Space launches
-        "FALCON 9  LC-39A",
-        "T-00.00.42",
-        "PAYLOAD STARLINK",
-        "ORBIT   LEO 550KM",
-        "LANDING DRONESHIP",
-        "STATUS  GO"
-    },
-    {   // Crypto
-        "BTC   67420 +2.1%",
-        "ETH    3510 +1.7%",
-        "SOL   142.30 +4.2%",
-        "BNB   385.10 +0.9%",
-        "DOGE  0.1621 +5.3%",
-        "XRP   0.5892 -1.1%"
-    },
-    {   // Weather
-        "JOHANNESBURG",
-        "TODAY  SUNNY 28C",
-        "WIND   NW 15KM/H",
-        "HUMID  42%",
-        "TOMORROW  CLOUDY",
-        "RAIN CHANCE  20%"
-    },
-};
-static const uint8_t kPresetCount = sizeof(kPresets) / sizeof(kPresets[0]);
+// ─── Demo presets ─────────────────────────────────────────────────────────────
+#include "presets.h"
 
 // ─── Module state ────────────────────────────────────────────────────────────
 static WebServer server(80);

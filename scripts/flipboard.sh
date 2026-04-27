@@ -248,6 +248,20 @@ cmd_set_timeout() {
   fi
 }
 
+cmd_brightness() {
+  require_config
+  local pct="${1:-}"
+  if [[ -z "$pct" ]]; then
+    read -rp "  Brightness 0-100 [current: $(API GET /status | python3 -c 'import sys,json; print(json.load(sys.stdin).get("brightness","?"))' 2>/dev/null || echo '?')]%: " pct
+  fi
+  if [[ ! "$pct" =~ ^[0-9]+$ ]] || (( pct > 100 )); then
+    err "Brightness must be 0–100"; exit 1
+  fi
+  log "Setting brightness to $pct%…"
+  API POST /display/brightness "$pct" > /dev/null
+  ok "Brightness set to $pct%"
+}
+
 cmd_wifi_reset() {
   require_config
   warn "This will erase WiFi credentials and reboot the board."
@@ -271,6 +285,7 @@ cmd_interactive() {
     echo "  7) Demo mode on/off"
     echo "  8) Wake display"
     echo "  9) Set display off timeout"
+    echo "  b) Set brightness"
     echo "  0) Configure (IP / API key)"
     echo "  r) Reset WiFi"
     echo "  q) Quit"
@@ -286,6 +301,7 @@ cmd_interactive() {
       7) cmd_demo ;;
       8) cmd_wake ;;
       9) cmd_set_timeout ;;
+      b|B) cmd_brightness ;;
       0) cmd_configure ;;
       r|R) cmd_wifi_reset ;;
       q|Q) echo "Bye!"; exit 0 ;;
@@ -311,6 +327,7 @@ usage() {
   echo -e "  demo [on|off]         Start or stop cycling presets every 30 s"
   echo -e "  wake                  Wake display and replay current content"
   echo -e "  timeout [minutes]     Set display off timeout (0 = never)"
+  echo -e "  brightness [0-100]    Set display brightness percentage"
   echo -e "  wifi-reset            Erase WiFi credentials and reboot"
   echo -e "  (no command)          Launch interactive menu"
   echo -e ""
@@ -344,6 +361,7 @@ case "${1:-}" in
   demo)        cmd_demo "${2:-}" ;;
   wake)        cmd_wake ;;
   timeout)     cmd_set_timeout "${2:-}" ;;
+  brightness)  cmd_brightness "${2:-}" ;;
   wifi-reset)  cmd_wifi_reset ;;
   -h|--help)   usage ;;
   "")          cmd_interactive ;;

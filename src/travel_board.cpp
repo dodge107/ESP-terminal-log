@@ -125,8 +125,8 @@ static uint8_t  g_wifiBars = 0;     // 0–3; updated by the caller
 // ─── Burn-in protection ───────────────────────────────────────────────────────
 #define BURNIN_DIM_MS        (30UL * 1000UL)          // 30 s → dim to ~10 % contrast
 #define BURNIN_OFF_MS_DEFAULT (10UL * 60UL * 1000UL)  // 10 min default → power-save off
-#define CONTRAST_FULL   200
 #define CONTRAST_DIM    25
+static uint8_t g_contrastFull = 200;   // runtime brightness (user-adjustable, 0-255)
 
 typedef enum { DISP_FULL, DISP_DIM, DISP_OFF } DispState;
 static DispState g_dispState    = DISP_FULL;
@@ -287,13 +287,30 @@ void board_wake() {
     g_lastDataMs = millis();
     if (g_dispState != DISP_FULL) {
         if (g_dispState == DISP_OFF) u8g2.setPowerSave(0);
-        u8g2.setContrast(CONTRAST_FULL);
+        u8g2.setContrast(g_contrastFull);
         g_dispState = DISP_FULL;
     }
 }
 
 void board_set_off_timeout_ms(uint32_t ms) {
     g_offTimeoutMs = ms;
+}
+
+void board_set_brightness(uint8_t percent) {
+    if (percent > 100) percent = 100;
+    g_contrastFull = (uint8_t)((uint16_t)percent * 255 / 100);
+    // Apply immediately if the display is currently fully on.
+    if (g_dispState == DISP_FULL) u8g2.setContrast(g_contrastFull);
+}
+
+uint8_t board_get_brightness() {
+    return (uint8_t)((uint16_t)g_contrastFull * 100 / 255);
+}
+
+bool board_is_animating() {
+    for (uint8_t i = 0; i < NUM_ROWS; i++)
+        if (g_rows[i].active) return true;
+    return false;
 }
 
 void board_replay() {
@@ -368,7 +385,7 @@ void board_tick() {
     {
         uint32_t idle = now - g_lastDataMs;
         if (g_dispState == DISP_FULL && idle >= BURNIN_DIM_MS) {
-            u8g2.setContrast(CONTRAST_DIM);
+            u8g2.setContrast(CONTRAST_DIM);   // always dim to fixed low value regardless of user brightness
             g_dispState = DISP_DIM;
         } else if (g_dispState == DISP_DIM && idle >= g_offTimeoutMs) {
             u8g2.setPowerSave(1);

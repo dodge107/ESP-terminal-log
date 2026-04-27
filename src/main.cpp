@@ -28,12 +28,44 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <WebServer.h>
+#include <Preferences.h>
+#include <ArduinoJson.h>
 #include "travel_board.h"
 #include "secrets.h"
+#include "sio_client.h"
 
 // ─── Security constants ───────────────────────────────────────────────────────
 #define MAX_BODY_BYTES  512   // reject bodies larger than this
 #define RATE_LIMIT_RPS  10    // max requests per second (global)
+
+// ─── Socket.IO config (persisted in NVS via Preferences) ─────────────────────
+struct SioConfig {
+    bool     enabled;
+    char     host[64];
+    uint16_t port;
+};
+
+static SioConfig g_sio = { false, "", 3000 };
+
+static void sioLoadConfig() {
+    Preferences prefs;
+    prefs.begin("sio", true);   // read-only
+    g_sio.enabled = prefs.getBool("enabled", false);
+    prefs.getString("host", g_sio.host, sizeof(g_sio.host));
+    g_sio.port = (uint16_t)prefs.getUInt("port", 3000);
+    prefs.end();
+}
+
+static void sioSaveConfig(bool enabled, const char* host, uint16_t port) {
+    Preferences prefs;
+    prefs.begin("sio", false);  // read-write
+    prefs.putBool("enabled", enabled);
+    prefs.putString("host", host);
+    prefs.putUInt("port", port);
+    prefs.end();
+    Serial.printf("[SIO] config saved  enabled=%d  host=%s  port=%d\n",
+                  enabled, host, port);
+}
 
 // ─── Wake-source pins ─────────────────────────────────────────────────────────
 // Define WAKE_BTN_PIN and/or WAKE_RADAR_PIN in platformio.ini build_flags to
@@ -92,6 +124,7 @@ tr:nth-child(even) td{background:#141414}
 
 <div class="tabs">
   <div class="tab active" onclick="show('board',this)">BOARD</div>
+  <div class="tab" onclick="show('settings',this)">SETTINGS</div>
   <div class="tab" onclick="show('docs',this)">API DOCS</div>
 </div>
 
@@ -114,6 +147,10 @@ tr:nth-child(even) td{background:#141414}
   <div id="msg"></div>
   <hr>
   <div class="field">
+    <label>BRIGHTNESS <span id="brightVal">78</span>%</label>
+    <input type="range" id="bright" min="0" max="100" value="78" style="width:100%;accent-color:#ffaa00" oninput="document.getElementById('brightVal').textContent=this.value" onchange="setBright()">
+  </div>
+  <div class="field">
     <label>DISPLAY OFF TIMEOUT (MINUTES, 0 = NEVER)</label>
     <input type="text" id="timeout" placeholder="10" style="width:80px">
     <button type="button" class="primary" style="margin-left:8px" onclick="setTimeo()">SET</button>
@@ -129,6 +166,42 @@ tr:nth-child(even) td{background:#141414}
   <hr>
   <button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
 </div>
+
+<!-- ── SETTINGS TAB ─────────────────────────────────────────────── -->
+<div id="settings" class="page">
+
+  <h2>SOCKET.IO SERVER</h2>
+  <p>Connect the board to a remote Socket.IO server for live push updates. Changes take effect immediately without rebooting.</p>
+  <div class="field">
+    <label>API KEY</label>
+    <input type="text" id="sKey" placeholder="paste api key here">
+  </div>
+  <hr>
+  <div class="field">
+    <label>ENABLE SOCKET.IO</label>
+    <select id="sEnable" style="background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:1em;width:100%">
+      <option value="0">DISABLED</option>
+      <option value="1">ENABLED</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>SERVER HOST / IP</label>
+    <input type="text" id="sHost" placeholder="192.168.1.10" autocomplete="off">
+  </div>
+  <div class="field">
+    <label>SERVER PORT</label>
+    <input type="text" id="sPort" placeholder="3000" style="width:100px">
+  </div>
+  <button type="button" class="primary" onclick="saveSio()">SAVE + CONNECT</button>
+  <div id="sMsg" style="margin-top:10px;font-size:.82em;min-height:1.1em"></div>
+
+  <hr>
+  <div class="field">
+    <label>SOCKET.IO STATUS</label>
+    <div id="sStatus" style="font-size:.82em;color:#888">Loading…</div>
+  </div>
+
+</div><!-- /settings -->
 
 <!-- ── DOCS TAB ────────────────────────────────────────────────── -->
 <div id="docs" class="page">
@@ -187,6 +260,13 @@ tr:nth-child(even) td{background:#141414}
   <pre>curl -X POST http://&lt;ip&gt;/wifi/reset \
      -H "X-Api-Key: &lt;key&gt;"</pre>
 
+  <h3><span class="method">POST</span><span class="ep">/display/brightness</span> <span class="auth">requires key</span></h3>
+  <p>Set display brightness 0–100 (percent). Applied immediately. Survives wake/dim cycles — the panel always returns to this level when woken. Resets to ~78% on reboot.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/display/brightness \
+     -H "X-Api-Key: &lt;key&gt;" \
+     -H "Content-Type: text/plain" \
+     -d "50"</pre>
+
   <h3><span class="method">POST</span><span class="ep">/display/demo</span> <span class="auth">requires key</span></h3>
   <p>Start or stop demo mode. While active, the board cycles through all built-in presets every 30 seconds. Sending content via <code>/row</code> or <code>/rows</code> cancels demo mode automatically. Body: <code>on</code> or <code>off</code>.</p>
   <pre>curl -X POST http://&lt;ip&gt;/display/demo \
@@ -229,12 +309,51 @@ tr:nth-child(even) td{background:#141414}
 <script>
 const keyEl=document.getElementById('key');
 const msg=document.getElementById('msg');
-keyEl.value=localStorage.getItem('fb_key')||'';
+const stored=localStorage.getItem('fb_key')||'';
+keyEl.value=stored;
+document.getElementById('sKey').value=stored;
 function show(id,tab){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   tab.classList.add('active');
+  if(id==='settings') loadSioConfig();
+}
+function sioKey(){
+  const k=document.getElementById('sKey').value.trim()||keyEl.value.trim();
+  localStorage.setItem('fb_key',k);
+  return k;
+}
+async function loadSioConfig(){
+  try{
+    const r=await fetch('/config/sio',{headers:{'X-Api-Key':sioKey()}});
+    if(!r.ok)return;
+    const j=await r.json();
+    document.getElementById('sEnable').value=j.enabled?'1':'0';
+    document.getElementById('sHost').value=j.host||'';
+    document.getElementById('sPort').value=j.port||3000;
+    document.getElementById('sStatus').textContent=
+      j.connected?'Connected':'Not connected';
+    document.getElementById('sStatus').style.color=j.connected?'#44ff88':'#888';
+  }catch(e){}
+}
+async function saveSio(){
+  const k=sioKey();
+  const body=JSON.stringify({
+    enabled: document.getElementById('sEnable').value==='1',
+    host:    document.getElementById('sHost').value.trim(),
+    port:    parseInt(document.getElementById('sPort').value)||3000
+  });
+  const sMsg=document.getElementById('sMsg');
+  sMsg.textContent='Saving…';
+  try{
+    const r=await fetch('/config/sio',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Api-Key':k},body});
+    if(r.ok){
+      sMsg.textContent='Saved. Reconnecting…';
+      setTimeout(loadSioConfig,2000);
+    }else{sMsg.textContent='Error '+r.status;}
+  }catch(e){sMsg.textContent='Failed: '+e;}
 }
 document.getElementById('f').onsubmit=async e=>{
   e.preventDefault();
@@ -275,6 +394,27 @@ async function toggleDemo(){
     }else{msg.textContent='Error '+r.status;}
   }catch(err){msg.textContent='Failed: '+err;}
 }
+async function setBright(){
+  const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
+  const v=document.getElementById('bright').value;
+  try{ await fetch('/display/brightness',{method:'POST',
+    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v}); }
+  catch(e){msg.textContent='Brightness failed: '+e;}
+}
+// Seed slider from live status on load
+(async()=>{
+  try{
+    const k=keyEl.value.trim();
+    if(!k) return;
+    const r=await fetch('/status',{headers:{'X-Api-Key':k}});
+    if(!r.ok) return;
+    const j=await r.json();
+    if(j.brightness!==undefined){
+      document.getElementById('bright').value=j.brightness;
+      document.getElementById('brightVal').textContent=j.brightness;
+    }
+  }catch(e){}
+})();
 async function wakeDisplay(){
   const k=keyEl.value.trim();
   localStorage.setItem('fb_key',k);
@@ -393,14 +533,15 @@ static void handleStatus() {
     char buf[256];
     snprintf(buf, sizeof(buf),
         "{\"wifi\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"bars\":%d,"
-        "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu}",
+        "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu,\"brightness\":%u}",
         WiFi.SSID().c_str(),
         WiFi.localIP().toString().c_str(),
         (int)WiFi.RSSI(),
         rssiToBars(WiFi.RSSI()),
         (unsigned long)ESP.getFreeHeap(),
         (unsigned long)ESP.getMinFreeHeap(),
-        millis() / 1000);
+        millis() / 1000,
+        board_get_brightness());
     server.send(200, "application/json", buf);
 }
 
@@ -561,6 +702,18 @@ static void handleDemo() {
     }
 }
 
+// Called by sio_client.cpp to toggle demo mode without duplicating the logic.
+void triggerDemoMode(bool on) {
+    g_demoMode = on;
+    if (on) {
+        g_demoIndex  = esp_random() % kPresetCount;
+        g_demoLastMs = millis();
+        board_wake();
+        board_set_all(kPresets[g_demoIndex]);
+    }
+    Serial.printf("[SIO] demo mode %s\n", on ? "on" : "off");
+}
+
 // Shared wake logic: restore display and replay animation.
 static void triggerWake(const char* source) {
     Serial.printf("[WAKE] triggered by %s\n", source);
@@ -574,6 +727,27 @@ static void handleWake() {
     if (rateLimited()) return;
     if (!authenticated()) return;
     triggerWake("API");
+    server.send(200, "text/plain", "ok");
+}
+
+// POST /display/brightness
+// Set display brightness 0-100 (percent). Applied immediately.
+static void handleSetBrightness() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String body = server.arg("plain");
+    body.trim();
+    if (body.isEmpty()) {
+        server.send(400, "application/json", "{\"error\":\"send brightness 0-100 as plain text\"}");
+        return;
+    }
+    int pct = body.toInt();
+    if (pct < 0 || pct > 100) {
+        server.send(400, "application/json", "{\"error\":\"brightness must be 0-100\"}");
+        return;
+    }
+    board_set_brightness((uint8_t)pct);
+    Serial.printf("[HTTP] POST /display/brightness  %d%%\n", pct);
     server.send(200, "text/plain", "ok");
 }
 
@@ -599,6 +773,59 @@ static void handleSetTimeout() {
     board_set_off_timeout_ms(ms);
     Serial.printf("[HTTP] POST /display/timeout  %d min\n", mins);
     server.send(200, "text/plain", "ok");
+}
+
+// GET /config/sio
+// Returns the current Socket.IO configuration and connection state as JSON.
+static void handleGetSioConfig() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String json = "{\"enabled\":";
+    json += g_sio.enabled ? "true" : "false";
+    json += ",\"host\":\"";
+    json += g_sio.host;
+    json += "\",\"port\":";
+    json += g_sio.port;
+    json += ",\"connected\":";
+    json += sio_connected() ? "true" : "false";
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
+// POST /config/sio
+// Update Socket.IO config, persist to NVS, and reconnect immediately.
+// Body (JSON): { "enabled": true|false, "host": "...", "port": N }
+static void handlePostSioConfig() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String body = server.arg("plain");
+    if (body.isEmpty()) {
+        server.send(400, "application/json", "{\"error\":\"empty body\"}");
+        return;
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+        server.send(400, "application/json", "{\"error\":\"invalid JSON\"}");
+        return;
+    }
+    bool     enabled = doc["enabled"] | false;
+    String   host    = doc["host"]    | "";
+    uint16_t port    = doc["port"]    | 3000;
+    host.trim();
+    if (port == 0) port = 3000;
+
+    // Persist
+    sioSaveConfig(enabled, host.c_str(), port);
+    g_sio.enabled = enabled;
+    strncpy(g_sio.host, host.c_str(), sizeof(g_sio.host) - 1);
+    g_sio.port = port;
+
+    // Reconnect with new settings
+    if (enabled && host.length() > 0) {
+        sio_init(g_sio.host, g_sio.port, API_KEY);
+    }
+
+    server.send(200, "application/json", "{\"ok\":true}");
 }
 
 // GET /
@@ -632,9 +859,12 @@ static void setupRoutes() {
     server.on("/wifi/reset",        HTTP_POST, handleWifiReset);
     server.on("/status",            HTTP_GET,  handleStatus);
     server.on("/rows",              HTTP_POST, handleSetAll);
+    server.on("/display/brightness", HTTP_POST, handleSetBrightness);
     server.on("/display/timeout",   HTTP_POST, handleSetTimeout);
     server.on("/display/wake",      HTTP_POST, handleWake);
     server.on("/display/demo",      HTTP_POST, handleDemo);
+    server.on("/config/sio",        HTTP_GET,  handleGetSioConfig);
+    server.on("/config/sio",        HTTP_POST, handlePostSioConfig);
 
     // Register one POST and one DELETE handler per row (rows 0–5).
     for (int i = 0; i <= 5; i++) {
@@ -720,8 +950,27 @@ void setup() {
     // Pre-patch the portal splash with the AP name before the callback fires.
     kPortal[2] = apName;
 
+    // Load Socket.IO config from NVS so the portal fields show current values.
+    sioLoadConfig();
+
     WiFiManager wm;
     wm.setConfigPortalTimeout(180);   // reboot after 3 min if no one configures
+
+    // ── Socket.IO custom parameters in the captive portal ────────────────────
+    // These appear as extra fields below the WiFi credentials form.
+    static char sioEnableBuf[4];
+    static char sioHostBuf[64];
+    static char sioPortBuf[8];
+    snprintf(sioEnableBuf, sizeof(sioEnableBuf), "%s", g_sio.enabled ? "yes" : "no");
+    snprintf(sioHostBuf,   sizeof(sioHostBuf),   "%s", g_sio.host);
+    snprintf(sioPortBuf,   sizeof(sioPortBuf),   "%u", g_sio.port);
+
+    WiFiManagerParameter paramEnable("sio_en",   "Socket.IO enable (yes/no)", sioEnableBuf, 3);
+    WiFiManagerParameter paramHost  ("sio_host", "Socket.IO server host/IP",  sioHostBuf,  63);
+    WiFiManagerParameter paramPort  ("sio_port", "Socket.IO port",            sioPortBuf,   7);
+    wm.addParameter(&paramEnable);
+    wm.addParameter(&paramHost);
+    wm.addParameter(&paramPort);
 
     // Called when stored credentials fail and the AP/portal opens.
     wm.setAPCallback([](WiFiManager*) {
@@ -731,9 +980,22 @@ void setup() {
         board_settle();   // snap to final text - portal blocks loop() indefinitely
     });
 
-    // Called each time WiFiManager saves new credentials.
-    wm.setSaveConfigCallback([]() {
+    // Called each time WiFiManager saves new credentials — also save SIO config.
+    wm.setSaveConfigCallback([&]() {
         Serial.println("  WiFi credentials saved - connecting…");
+        String en   = paramEnable.getValue();
+        String host = paramHost.getValue();
+        String port = paramPort.getValue();
+        en.trim(); en.toLowerCase();
+        host.trim();
+        bool enabled = (en == "yes" || en == "1" || en == "true");
+        uint16_t p   = (uint16_t)port.toInt();
+        if (p == 0) p = 3000;
+        sioSaveConfig(enabled, host.c_str(), p);
+        // Update live config so the connection attempt below uses fresh values.
+        g_sio.enabled = enabled;
+        strncpy(g_sio.host, host.c_str(), sizeof(g_sio.host) - 1);
+        g_sio.port = p;
     });
 
     Serial.println("  Starting WiFiManager…");
@@ -748,6 +1010,12 @@ void setup() {
     board_set_wifi_bars(rssiToBars(WiFi.RSSI()));
     board_set_all(kPresets[esp_random() % kPresetCount]);
     setupRoutes();
+
+    if (g_sio.enabled && strlen(g_sio.host) > 0) {
+        sio_init(g_sio.host, g_sio.port, API_KEY);
+    } else {
+        Serial.println("  Socket.IO disabled - skipping");
+    }
 }
 
 void loop() {
@@ -779,6 +1047,9 @@ void loop() {
 
     // Drive the flap animation and push the frame to the display.
     board_tick();
+
+    // Process incoming Socket.IO events (no-op if disabled).
+    if (g_sio.enabled) sio_tick();
 
     uint32_t now = millis();
 

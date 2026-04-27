@@ -13,3 +13,6 @@ void board_set_sep_gap(uint8_t px);     // px of clear space on each side of the
 void board_wake();                      // restores full brightness and resets idle timer
 void board_replay();                    // re-triggers cascade animation for all rows using current targets
 void board_set_off_timeout_ms(uint32_t ms);  // override the power-off idle timeout (runtime only, not persisted)
+void board_set_brightness(uint8_t percent);  // set display brightness 0-100 %; applied immediately
+uint8_t board_get_brightness();              // returns current brightness 0-100 %
+bool board_is_animating();                   // true while any row is still flipping

@@ -546,7 +546,7 @@ static void handleDemo() {
 
     if (body == "on") {
         g_demoMode   = true;
-        g_demoIndex  = 0;
+        g_demoIndex  = esp_random() % kPresetCount;
         g_demoLastMs = millis();
         board_wake();
         board_set_all(kPresets[g_demoIndex]);
@@ -785,7 +785,9 @@ void loop() {
     // ── Demo mode: cycle presets every 30 s ──────────────────────────────────
     if (g_demoMode && (now - g_demoLastMs) >= DEMO_INTERVAL_MS) {
         g_demoLastMs = now;
-        g_demoIndex  = (g_demoIndex + 1) % kPresetCount;
+        uint8_t next;
+        do { next = esp_random() % kPresetCount; } while (next == g_demoIndex);
+        g_demoIndex = next;
         board_wake();
         board_set_all(kPresets[g_demoIndex]);
     }

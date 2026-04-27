@@ -603,8 +603,9 @@ static uint8_t rssiToBars(int32_t rssi) {
     return 0;                    // weak / disconnected
 }
 
-// Forward declaration — defined after the wake helpers below.
+// Forward declarations — defined after the wake helpers below.
 void triggerContentNotify();
+void pushBoardState();
 
 // ─── HTTP handlers ───────────────────────────────────────────────────────────
 
@@ -693,6 +694,7 @@ static void handleSetRow() {
     board_wake();
     board_set_row((uint8_t)rowNum, body.c_str());
     triggerContentNotify();
+    pushBoardState();
     server.send(200, "text/plain", "ok");
 }
 
@@ -744,6 +746,7 @@ static void handleSetAll() {
     board_wake();
     board_set_all(texts);
     triggerContentNotify();
+    pushBoardState();
     server.send(200, "text/plain", "ok");
 }
 
@@ -805,6 +808,28 @@ void triggerDemoMode(bool on) {
         board_set_all(kPresets[g_demoIndex]);
     }
     Serial.printf("[SIO] demo mode %s\n", on ? "on" : "off");
+}
+
+// Push current screen rows and LED state to the Socket.IO server.
+// The server stores this per-board and shows it in the dashboard preview.
+void pushBoardState() {
+    if (!g_sio.enabled || !sio_connected()) return;
+
+    char r[6][22];
+    for (uint8_t i = 0; i < 6; i++) board_get_row_text(i, r[i], sizeof(r[i]));
+
+    char json[420];
+    snprintf(json, sizeof(json),
+        "{\"rows\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"],"
+        "\"demo\":%s,"
+        "\"leds\":{\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s},"
+                  "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s}}}",
+        r[0], r[1], r[2], r[3], r[4], r[5],
+        g_demoMode ? "true" : "false",
+        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_get_notify(0) ? "true" : "false",
+        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_get_notify(1) ? "true" : "false");
+
+    sio_send("state", json);
 }
 
 // Fire notification flash on any LED that has notify enabled.
@@ -1266,7 +1291,17 @@ void loop() {
     led_tick();
 
     // Process incoming Socket.IO events (no-op if disabled).
-    if (g_sio.enabled) sio_tick();
+    if (g_sio.enabled) {
+        static bool s_sioWasConnected = false;
+        static bool s_wasAnimating    = false;
+        sio_tick();
+        bool nowConn      = sio_connected();
+        bool nowAnimating = board_is_animating();
+        if (nowConn && !s_sioWasConnected) pushBoardState();  // initial state push on (re)connect
+        if (s_wasAnimating && !nowAnimating && nowConn) pushBoardState();  // push once animation settles
+        s_sioWasConnected = nowConn;
+        s_wasAnimating    = nowAnimating;
+    }
 
     uint32_t now = millis();
 

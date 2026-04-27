@@ -128,6 +128,15 @@ void sio_tick() {
 
 bool sio_connected() { return g_sioConn; }
 
+bool sio_send(const char* event, const char* jsonData) {
+    if (!g_sioConn) return false;
+    // Format: 42["event",{...}]
+    char buf[512];
+    snprintf(buf, sizeof(buf), "42[\"%s\",%s]", event, jsonData ? jsonData : "{}");
+    sendText(buf);
+    return true;
+}
+
 // ─── Connection ───────────────────────────────────────────────────────────────
 
 static void doConnect() {
@@ -356,6 +365,7 @@ static void dispatch(const char* event, JsonVariantConst data) {
         board_wake();
         board_set_row((uint8_t)row, text);
         triggerContentNotify();
+        extern void pushBoardState(); pushBoardState();
 
     } else if (strcmp(event, "set_all") == 0) {
         JsonArrayConst rows = data["rows"].as<JsonArrayConst>();
@@ -374,6 +384,7 @@ static void dispatch(const char* event, JsonVariantConst data) {
         board_wake();
         board_set_all(ptrs);
         triggerContentNotify();
+        extern void pushBoardState(); pushBoardState();
 
     } else if (strcmp(event, "clear_row") == 0) {
         int row = data["row"] | -1;

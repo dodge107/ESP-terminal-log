@@ -307,6 +307,15 @@ uint8_t board_get_brightness() {
     return (uint8_t)((uint16_t)g_contrastFull * 100 / 255);
 }
 
+void board_get_row_text(uint8_t row, char* buf, uint8_t bufLen) {
+    if (row >= NUM_ROWS || !buf || bufLen == 0) return;
+    uint8_t n = (bufLen - 1) < NUM_COLS ? (bufLen - 1) : NUM_COLS;
+    for (uint8_t j = 0; j < n; j++) buf[j] = g_rows[row].slots[j].target;
+    // Trim trailing spaces
+    while (n > 0 && buf[n - 1] == ' ') n--;
+    buf[n] = '\0';
+}
+
 bool board_is_animating() {
     for (uint8_t i = 0; i < NUM_ROWS; i++)
         if (g_rows[i].active) return true;

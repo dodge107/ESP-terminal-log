@@ -16,3 +16,4 @@
 void sio_init(const char* host, uint16_t port, const char* apiKey, const char* path = "/socket.io");
 void sio_tick();
 bool sio_connected();
+bool sio_send(const char* event, const char* jsonData); // emit an event to the server

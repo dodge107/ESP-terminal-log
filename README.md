@@ -35,6 +35,8 @@ WiFi credentials are never hardcoded. On first boot the device opens a captive-p
 
 The display includes burn-in protection: after 30 seconds of inactivity the contrast is dimmed to ~10%; after 10 minutes the panel is powered off entirely. Any incoming data via the API restores full brightness immediately.
 
+The display can also be woken by a physical button, an mmWave presence sensor, or the `POST /display/wake` API endpoint. On wake the current content is replayed through the full split-flap cascade animation.
+
 ---
 
 ## Hardware
@@ -176,6 +178,8 @@ IP="192.168.1.42"
 | `POST` | `/row/<0-5>` | Set one row |
 | `POST` | `/rows` | Set all 6 rows (newline-delimited body) |
 | `DELETE` | `/row/<0-5>/clear` | Blank a row |
+| `POST` | `/display/wake` | Wake display and replay current content |
+| `POST` | `/display/timeout` | Set idle power-off timeout (minutes, 0 = never) |
 | `POST` | `/wifi/reset` | Clear WiFi credentials and reboot |
 
 ### Examples
@@ -201,6 +205,63 @@ curl -X DELETE http://$IP/row/3/clear -H "X-Api-Key: $KEY"
 ```
 
 The display accepts `A–Z`, `0–9`, and `space - : / . !`. Lowercase is uppercased automatically; unsupported characters are stripped.
+
+---
+
+## Wake sources
+
+The display can be woken from dim or powered-off state by three independent sources — any combination can be active at once.
+
+### API / web UI
+
+`POST /display/wake` restores full brightness and replays the current board content through the split-flap animation. A **WAKE + REPLAY** button is also available in the web UI BOARD tab.
+
+```sh
+curl -X POST http://<ip>/display/wake -H "X-Api-Key: <key>"
+# or via the shell script:
+./scripts/flipboard.sh wake
+```
+
+### Button
+
+Wire a momentary push-button between a free GPIO and GND. The pin is configured with an internal pull-up so no external resistor is needed.
+
+| Button pin | ESP32-C3 suggestion | ESP32-S3 suggestion |
+|-----------|--------------------|--------------------|
+| One leg | GPIO5 | GPIO1 |
+| Other leg | GND | GND |
+
+Enable in `platformio.ini`:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -DI2C_SDA_PIN=3
+    -DI2C_SCL_PIN=4
+    -DWAKE_BTN_PIN=5
+```
+
+### mmWave radar (e.g. LD2410)
+
+Connect the sensor's OUT / presence pin to a free GPIO. The pin goes HIGH when presence is detected; the display wakes on the rising edge (first detection) and will not re-trigger while presence is held.
+
+| Sensor pin | ESP32 pin |
+|-----------|-----------|
+| VCC | 3V3 |
+| GND | GND |
+| OUT | GPIO6 (or any free GPIO) |
+
+Enable in `platformio.ini`:
+
+```ini
+build_flags =
+    ${env.build_flags}
+    -DI2C_SDA_PIN=3
+    -DI2C_SCL_PIN=4
+    -DWAKE_RADAR_PIN=6
+```
+
+Both sources can be enabled simultaneously by including both flags.
 
 ---
 

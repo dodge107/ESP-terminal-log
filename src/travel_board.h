@@ -10,5 +10,6 @@ void board_tick();                  // call every loop(); drives animation + red
 void board_set_speed_ms(uint16_t ms);
 void board_set_wifi_bars(uint8_t bars); // 0..3
 void board_set_sep_gap(uint8_t px);     // px of clear space on each side of the separator line
-void board_wake();                      // call on new data: restores full brightness and resets idle timer
+void board_wake();                      // restores full brightness and resets idle timer
+void board_replay();                    // re-triggers cascade animation for all rows using current targets
 void board_set_off_timeout_ms(uint32_t ms);  // override the power-off idle timeout (runtime only, not persisted)

@@ -296,6 +296,19 @@ void board_set_off_timeout_ms(uint32_t ms) {
     g_offTimeoutMs = ms;
 }
 
+void board_replay() {
+    // Re-trigger the cascade animation for every row using the slots' existing
+    // target characters.  Rows stagger 120 ms apart (same as board_set_all).
+    uint32_t now = millis();
+    for (uint8_t i = 0; i < NUM_ROWS; i++) {
+        char text[NUM_COLS + 1];
+        for (uint8_t j = 0; j < NUM_COLS; j++)
+            text[j] = g_rows[i].slots[j].target;
+        text[NUM_COLS] = '\0';
+        startRow(i, text, now + (uint32_t)i * 120);
+    }
+}
+
 // ─── Drawing: WiFi icon ───────────────────────────────────────────────────────
 // The icon lives in the top-right corner.  It is drawn AFTER the row text so
 // it paints over any characters that overflow into the reserved area.

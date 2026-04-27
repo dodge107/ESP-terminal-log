@@ -35,6 +35,18 @@
 #define MAX_BODY_BYTES  512   // reject bodies larger than this
 #define RATE_LIMIT_RPS  10    // max requests per second (global)
 
+// ─── Wake-source pins ─────────────────────────────────────────────────────────
+// Define WAKE_BTN_PIN and/or WAKE_RADAR_PIN in platformio.ini build_flags to
+// enable the corresponding wake source.  Both are optional and independent.
+//
+//   Button : active-low, internal pull-up.  Press triggers wake + replay.
+//   Radar  : active-high OUT pin from an mmWave sensor (e.g. LD2410).
+//            Rising edge (no presence → presence) triggers wake + replay.
+//
+// Example platformio.ini build_flags:
+//   -DWAKE_BTN_PIN=5
+//   -DWAKE_RADAR_PIN=6
+
 // ─── Web UI page ─────────────────────────────────────────────────────────────
 static const char kPageUI[] PROGMEM = R"HTML(
 <!DOCTYPE html>
@@ -106,6 +118,14 @@ tr:nth-child(even) td{background:#141414}
     <input type="text" id="timeout" placeholder="10" style="width:80px">
     <button type="button" class="primary" style="margin-left:8px" onclick="setTimeo()">SET</button>
   </div>
+  <div class="field">
+    <label>WAKE DISPLAY</label>
+    <button type="button" class="primary" onclick="wakeDisplay()">WAKE + REPLAY</button>
+  </div>
+  <div class="field">
+    <label>DEMO MODE (CYCLES ALL PRESETS EVERY 30 S)</label>
+    <button type="button" id="demoBtn" class="primary" onclick="toggleDemo()">START DEMO</button>
+  </div>
   <hr>
   <button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
 </div>
@@ -167,6 +187,18 @@ tr:nth-child(even) td{background:#141414}
   <pre>curl -X POST http://&lt;ip&gt;/wifi/reset \
      -H "X-Api-Key: &lt;key&gt;"</pre>
 
+  <h3><span class="method">POST</span><span class="ep">/display/demo</span> <span class="auth">requires key</span></h3>
+  <p>Start or stop demo mode. While active, the board cycles through all built-in presets every 30 seconds. Sending content via <code>/row</code> or <code>/rows</code> cancels demo mode automatically. Body: <code>on</code> or <code>off</code>.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/display/demo \
+     -H "X-Api-Key: &lt;key&gt;" \
+     -H "Content-Type: text/plain" \
+     -d "on"</pre>
+
+  <h3><span class="method">POST</span><span class="ep">/display/wake</span> <span class="auth">requires key</span></h3>
+  <p>Wake the display and replay the current content through the split-flap animation. Equivalent to pressing the wake button or triggering the radar sensor.</p>
+  <pre>curl -X POST http://&lt;ip&gt;/display/wake \
+     -H "X-Api-Key: &lt;key&gt;"</pre>
+
   <h3><span class="method">POST</span><span class="ep">/display/timeout</span> <span class="auth">requires key</span></h3>
   <p>Override the idle power-off timeout for this session. Send the number of minutes as a plain text body. Use <code>0</code> to disable power-off entirely. Resets to the 10-minute default on reboot.</p>
   <pre>curl -X POST http://&lt;ip&gt;/display/timeout \
@@ -225,6 +257,33 @@ async function resetWifi(){
   try{await fetch('/wifi/reset',{method:'POST',headers:{'X-Api-Key':k}});}catch(e){}
   msg.textContent='Board rebooting into WiFi setup mode…';
 }
+let demoOn=false;
+async function toggleDemo(){
+  const k=keyEl.value.trim();
+  localStorage.setItem('fb_key',k);
+  const next=!demoOn;
+  msg.textContent=next?'Starting demo…':'Stopping demo…';
+  try{
+    const r=await fetch('/display/demo',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:next?'on':'off'});
+    if(r.ok){
+      demoOn=next;
+      const btn=document.getElementById('demoBtn');
+      btn.textContent=demoOn?'STOP DEMO':'START DEMO';
+      btn.style.background=demoOn?'#cc4400':'';
+      msg.textContent=demoOn?'Demo mode on – cycling every 30 s.':'Demo mode off.';
+    }else{msg.textContent='Error '+r.status;}
+  }catch(err){msg.textContent='Failed: '+err;}
+}
+async function wakeDisplay(){
+  const k=keyEl.value.trim();
+  localStorage.setItem('fb_key',k);
+  msg.textContent='Waking…';
+  try{
+    const r=await fetch('/display/wake',{method:'POST',headers:{'X-Api-Key':k}});
+    msg.textContent=r.ok?'Display woken.':'Error '+r.status;
+  }catch(err){msg.textContent='Failed: '+err;}
+}
 async function setTimeo(){
   const k=keyEl.value.trim();
   localStorage.setItem('fb_key',k);
@@ -264,14 +323,58 @@ static const char* kPortal[6] = {
 };
 
 // ─── Demo content (shown once WiFi connects) ─────────────────────────────────
-static const char* kDemo[6] = {
-    "FL 101  LONDON",
-    "FL 202  NEW YORK",
-    "FL 303  PARIS",
-    "FL 404  TOKYO",
-    "FL 505  SYDNEY",
-    "FL 606  DUBAI"
+// ─── Demo presets (one is chosen at random on each boot) ─────────────────────
+static const char* kPresets[][6] = {
+    {   // Flights
+        "FL 101  LONDON",
+        "FL 202  NEW YORK",
+        "FL 303  PARIS",
+        "FL 404  TOKYO",
+        "FL 505  SYDNEY",
+        "FL 606  DUBAI"
+    },
+    {   // Stock ticker
+        "AAPL  172.45 +1.2%",
+        "TSLA  248.10 -0.8%",
+        "NVDA  875.22 +3.4%",
+        "BTC   67420 +2.1%",
+        "ETH    3510 +1.7%",
+        "SPY   523.80 +0.5%"
+    },
+    {   // Train departures
+        "08.14  CAPE TOWN",
+        "08.32  DURBAN",
+        "09.05  PRETORIA",
+        "09.47  PORT ELIZ",
+        "10.20  BLOEMFONT",
+        "11.00  KIMBERLEY"
+    },
+    {   // Space launches
+        "FALCON 9  LC-39A",
+        "T-00.00.42",
+        "PAYLOAD STARLINK",
+        "ORBIT   LEO 550KM",
+        "LANDING DRONESHIP",
+        "STATUS  GO"
+    },
+    {   // Crypto
+        "BTC   67420 +2.1%",
+        "ETH    3510 +1.7%",
+        "SOL   142.30 +4.2%",
+        "BNB   385.10 +0.9%",
+        "DOGE  0.1621 +5.3%",
+        "XRP   0.5892 -1.1%"
+    },
+    {   // Weather
+        "JOHANNESBURG",
+        "TODAY  SUNNY 28C",
+        "WIND   NW 15KM/H",
+        "HUMID  42%",
+        "TOMORROW  CLOUDY",
+        "RAIN CHANCE  20%"
+    },
 };
+static const uint8_t kPresetCount = sizeof(kPresets) / sizeof(kPresets[0]);
 
 // ─── Module state ────────────────────────────────────────────────────────────
 static WebServer server(80);
@@ -279,7 +382,22 @@ static WebServer server(80);
 // Rate-limit state: count requests inside the current 1-second window.
 static uint32_t g_rateWindowStart = 0;
 static uint16_t g_rateCount       = 0;
-static uint32_t  g_lastWifiCheckMs = 0;
+static uint32_t g_lastWifiCheckMs = 0;
+
+// Demo mode state
+static bool     g_demoMode    = false;
+static uint8_t  g_demoIndex   = 0;
+static uint32_t g_demoLastMs  = 0;
+#define DEMO_INTERVAL_MS  (30UL * 1000UL)
+
+// Wake-source state
+#ifdef WAKE_BTN_PIN
+static uint32_t g_lastBtnMs    = 0;      // debounce timestamp
+static bool     g_lastBtnState = true;   // last stable state (HIGH = not pressed)
+#endif
+#ifdef WAKE_RADAR_PIN
+static bool g_lastRadarState = false;    // last stable state (LOW = no presence)
+#endif
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -393,6 +511,7 @@ static void handleSetRow() {
     Serial.printf("[HTTP] POST /row/%d  args=%d  body=\"%s\"\n",
                   rowNum, server.args(), body.c_str());
 
+    g_demoMode = false;
     board_wake();
     board_set_row((uint8_t)rowNum, body.c_str());
     server.send(200, "text/plain", "ok");
@@ -441,6 +560,7 @@ static void handleSetAll() {
     for (uint8_t i = 0; i < 6; i++)
         Serial.printf("  [%d] \"%s\"\n", i, texts[i] ? texts[i] : "");
 
+    g_demoMode = false;
     board_wake();
     board_set_all(texts);
     server.send(200, "text/plain", "ok");
@@ -459,6 +579,52 @@ static void handleClearRow() {
     }
     board_wake();
     board_clear_row((uint8_t)rowNum);
+    server.send(200, "text/plain", "ok");
+}
+
+// POST /display/demo
+// Start or stop the demo mode.  Body: "on" to start, "off" to stop.
+// While active, the display cycles through all presets every 30 seconds.
+// Sending content via /row or /rows cancels demo mode automatically.
+static void handleDemo() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String body = server.arg("plain");
+    body.trim();
+    // lowercase
+    for (int i = 0; i < (int)body.length(); i++)
+        body[i] = tolower(body[i]);
+
+    if (body == "on") {
+        g_demoMode   = true;
+        g_demoIndex  = 0;
+        g_demoLastMs = millis();
+        board_wake();
+        board_set_all(kPresets[g_demoIndex]);
+        Serial.println("[HTTP] POST /display/demo  on");
+        server.send(200, "text/plain", "ok");
+    } else if (body == "off") {
+        g_demoMode = false;
+        Serial.println("[HTTP] POST /display/demo  off");
+        server.send(200, "text/plain", "ok");
+    } else {
+        server.send(400, "application/json", "{\"error\":\"body must be 'on' or 'off'\"}");
+    }
+}
+
+// Shared wake logic: restore display and replay animation.
+static void triggerWake(const char* source) {
+    Serial.printf("[WAKE] triggered by %s\n", source);
+    board_wake();
+    board_replay();
+}
+
+// POST /display/wake
+// Wake the display and replay the current content via the split-flap animation.
+static void handleWake() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    triggerWake("API");
     server.send(200, "text/plain", "ok");
 }
 
@@ -518,6 +684,8 @@ static void setupRoutes() {
     server.on("/status",            HTTP_GET,  handleStatus);
     server.on("/rows",              HTTP_POST, handleSetAll);
     server.on("/display/timeout",   HTTP_POST, handleSetTimeout);
+    server.on("/display/wake",      HTTP_POST, handleWake);
+    server.on("/display/demo",      HTTP_POST, handleDemo);
 
     // Register one POST and one DELETE handler per row (rows 0–5).
     for (int i = 0; i <= 5; i++) {
@@ -581,6 +749,15 @@ void setup() {
     snprintf(chipRow, sizeof(chipRow), "%s BOARD", ESP.getChipModel());
     kBoot[1] = chipRow;
 
+#ifdef WAKE_BTN_PIN
+    pinMode(WAKE_BTN_PIN, INPUT_PULLUP);
+    Serial.printf("  Wake button : GPIO%d\n", WAKE_BTN_PIN);
+#endif
+#ifdef WAKE_RADAR_PIN
+    pinMode(WAKE_RADAR_PIN, INPUT);
+    Serial.printf("  Wake radar  : GPIO%d\n", WAKE_RADAR_PIN);
+#endif
+
     board_init();
     board_set_all(kBoot);
     board_settle();   // snap to final text immediately - loop() won't run during WiFiManager
@@ -620,7 +797,7 @@ void setup() {
     Serial.printf("  Connected!  SSID: %s  IP: %s\n",
                   WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     board_set_wifi_bars(rssiToBars(WiFi.RSSI()));
-    board_set_all(kDemo);
+    board_set_all(kPresets[esp_random() % kPresetCount]);
     setupRoutes();
 }
 
@@ -629,11 +806,42 @@ void loop() {
     // This must run every loop() - long blocking calls will stall it.
     server.handleClient();
 
+    // ── Wake sources ─────────────────────────────────────────────────────────
+#ifdef WAKE_BTN_PIN
+    {
+        bool state = digitalRead(WAKE_BTN_PIN);   // HIGH = not pressed (pull-up)
+        uint32_t now = millis();
+        // Falling edge with 50 ms debounce
+        if (!state && g_lastBtnState && (now - g_lastBtnMs) > 50) {
+            g_lastBtnMs = now;
+            triggerWake("button");
+        }
+        g_lastBtnState = state;
+    }
+#endif
+#ifdef WAKE_RADAR_PIN
+    {
+        bool state = digitalRead(WAKE_RADAR_PIN);  // HIGH = presence detected
+        // Rising edge only — don't re-trigger while presence is held
+        if (state && !g_lastRadarState) triggerWake("radar");
+        g_lastRadarState = state;
+    }
+#endif
+
     // Drive the flap animation and push the frame to the display.
     board_tick();
 
-    // Every 5 s: refresh the WiFi signal icon and print a status block.
     uint32_t now = millis();
+
+    // ── Demo mode: cycle presets every 30 s ──────────────────────────────────
+    if (g_demoMode && (now - g_demoLastMs) >= DEMO_INTERVAL_MS) {
+        g_demoLastMs = now;
+        g_demoIndex  = (g_demoIndex + 1) % kPresetCount;
+        board_wake();
+        board_set_all(kPresets[g_demoIndex]);
+    }
+
+    // Every 5 s: refresh the WiFi signal icon and print a status block.
     if (now - g_lastWifiCheckMs >= 5000) {
         g_lastWifiCheckMs = now;
         board_set_wifi_bars(WiFi.status() == WL_CONNECTED

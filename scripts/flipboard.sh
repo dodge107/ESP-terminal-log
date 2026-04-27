@@ -204,6 +204,32 @@ cmd_preset() {
   ok "Preset loaded"
 }
 
+cmd_demo() {
+  require_config
+  local state="${1:-}"
+  if [[ -z "$state" ]]; then
+    read -rp "  Demo mode [on/off]: " state
+  fi
+  state=$(echo "$state" | tr '[:upper:]' '[:lower:]')
+  if [[ "$state" != "on" && "$state" != "off" ]]; then
+    err "State must be 'on' or 'off'"; exit 1
+  fi
+  log "Setting demo mode: $state"
+  API POST /display/demo "$state" > /dev/null
+  if [[ "$state" == "on" ]]; then
+    ok "Demo mode on – presets will cycle every 30 s. Sending content cancels it."
+  else
+    ok "Demo mode off"
+  fi
+}
+
+cmd_wake() {
+  require_config
+  log "Waking display…"
+  API POST /display/wake > /dev/null
+  ok "Display woken – replaying current content"
+}
+
 cmd_set_timeout() {
   require_config
   local mins="${1:-}"
@@ -242,9 +268,11 @@ cmd_interactive() {
     echo "  4) Clear all rows"
     echo "  5) Load a preset"
     echo "  6) Get board status"
-    echo "  7) Set display off timeout"
-    echo "  8) Configure (IP / API key)"
-    echo "  9) Reset WiFi"
+    echo "  7) Demo mode on/off"
+    echo "  8) Wake display"
+    echo "  9) Set display off timeout"
+    echo "  0) Configure (IP / API key)"
+    echo "  r) Reset WiFi"
     echo "  q) Quit"
     echo ""
     read -rp "Choice: " choice
@@ -255,9 +283,11 @@ cmd_interactive() {
       4) cmd_clear_all ;;
       5) cmd_preset ;;
       6) cmd_status ;;
-      7) cmd_set_timeout ;;
-      8) cmd_configure ;;
-      9) cmd_wifi_reset ;;
+      7) cmd_demo ;;
+      8) cmd_wake ;;
+      9) cmd_set_timeout ;;
+      0) cmd_configure ;;
+      r|R) cmd_wifi_reset ;;
       q|Q) echo "Bye!"; exit 0 ;;
       *) warn "Unknown option" ;;
     esac
@@ -278,6 +308,8 @@ usage() {
   echo -e "  clear <0-5>           Clear a single row"
   echo -e "  clear-all             Blank every row"
   echo -e "  preset                Load a built-in preset"
+  echo -e "  demo [on|off]         Start or stop cycling presets every 30 s"
+  echo -e "  wake                  Wake display and replay current content"
   echo -e "  timeout [minutes]     Set display off timeout (0 = never)"
   echo -e "  wifi-reset            Erase WiFi credentials and reboot"
   echo -e "  (no command)          Launch interactive menu"
@@ -309,6 +341,8 @@ case "${1:-}" in
   clear)       cmd_clear_row "${2:-}" ;;
   clear-all)   cmd_clear_all ;;
   preset)      cmd_preset ;;
+  demo)        cmd_demo "${2:-}" ;;
+  wake)        cmd_wake ;;
   timeout)     cmd_set_timeout "${2:-}" ;;
   wifi-reset)  cmd_wifi_reset ;;
   -h|--help)   usage ;;

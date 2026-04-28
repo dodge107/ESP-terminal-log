@@ -291,26 +291,26 @@ cmd_led_bright() {
   ok "LED $n brightness set to $pct%"
 }
 
-cmd_led_notify() {
+cmd_led_override() {
   require_config
   local n="${1:-}"
-  local state="${2:-}"
+  local mode="${2:-}"
   if [[ -z "$n" ]]; then
     read -rp "  LED number [1/2]: " n
   fi
   if [[ ! "$n" =~ ^[12]$ ]]; then
     err "LED must be 1 or 2"; exit 1
   fi
-  if [[ -z "$state" ]]; then
-    read -rp "  Notify on new content/wake [on/off]: " state
+  if [[ -z "$mode" ]]; then
+    read -rp "  Override mode [on/off/flash/pulse]: " mode
   fi
-  state=$(echo "$state" | tr '[:upper:]' '[:lower:]')
-  if [[ "$state" != "on" && "$state" != "off" ]]; then
-    err "State must be on or off"; exit 1
+  mode=$(echo "$mode" | tr '[:upper:]' '[:lower:]')
+  if [[ "$mode" != "on" && "$mode" != "off" && "$mode" != "flash" && "$mode" != "pulse" ]]; then
+    err "Mode must be on, off, flash, or pulse"; exit 1
   fi
-  log "Setting LED $n notify to $state…"
-  API POST "/led/$n/notify" "$state" > /dev/null
-  ok "LED $n notify $state"
+  log "Setting LED $n override to $mode…"
+  API POST "/led/$n/override" "$mode" > /dev/null
+  ok "LED $n override set to $mode"
 }
 
 cmd_brightness() {
@@ -353,7 +353,7 @@ cmd_interactive() {
     echo "  b) Set brightness"
     echo "  l) Set LED mode"
     echo "  L) Set LED brightness"
-    echo "  n) Set LED notify"
+    echo "  o) Set LED override mode"
     echo "  0) Configure (IP / API key)"
     echo "  r) Reset WiFi"
     echo "  q) Quit"
@@ -372,7 +372,7 @@ cmd_interactive() {
       b|B) cmd_brightness ;;
       l)   cmd_led ;;
       L)   cmd_led_bright ;;
-      n|N) cmd_led_notify ;;
+      o|O) cmd_led_override ;;
       0) cmd_configure ;;
       r|R) cmd_wifi_reset ;;
       q|Q) echo "Bye!"; exit 0 ;;
@@ -401,7 +401,7 @@ usage() {
   echo -e "  brightness [0-100]    Set display brightness percentage"
   echo -e "  led <1|2> [mode]      Set LED mode: on, off, flash, pulse"
   echo -e "  led-bright <1|2> [%]  Set LED brightness 0-100"
-  echo -e "  led-notify <1|2> [on|off]  Auto-flash LED on new content or wake"
+  echo -e "  led-override <1|2> [mode]  Set LED override mode (on/off/flash/pulse)"
   echo -e "  wifi-reset            Erase WiFi credentials and reboot"
   echo -e "  (no command)          Launch interactive menu"
   echo -e ""
@@ -438,7 +438,7 @@ case "${1:-}" in
   brightness)  cmd_brightness "${2:-}" ;;
   led)         cmd_led        "${2:-}" "${3:-}" ;;
   led-bright)  cmd_led_bright "${2:-}" "${3:-}" ;;
-  led-notify)  cmd_led_notify "${2:-}" "${3:-}" ;;
+  led-override) cmd_led_override "${2:-}" "${3:-}" ;;
   wifi-reset)  cmd_wifi_reset ;;
   -h|--help)   usage ;;
   "")          cmd_interactive ;;

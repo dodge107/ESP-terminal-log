@@ -8,3 +8,5 @@ src/secrets.h
 node_modules
 server/package-lock.json
 server/server.md
+presentation/demo-script.html
+.gitignore

@@ -36,8 +36,8 @@ const emptyState = () => ({
     rows: ['', '', '', '', '', ''],
     demo: false,
     leds: {
-        led1: { mode: 'off', brightness: 100, notify: false },
-        led2: { mode: 'off', brightness: 100, notify: false },
+        led1: { mode: 'off', brightness: 100, override: 'off' },
+        led2: { mode: 'off', brightness: 100, override: 'off' },
     },
 });
 
@@ -63,7 +63,18 @@ io.on('connection', (socket) => {
         if (!board || !board.key) return;
         if (Array.isArray(data.rows))       board.rows = data.rows.slice(0, 6).map(String);
         if (typeof data.demo === 'boolean') board.demo = data.demo;
-        if (data.leds)                      board.leds = data.leds;
+        if (data.leds) {
+            // Normalise incoming leds: accept both legacy notify and new override field.
+            const norm = (l) => ({
+                mode:       l.mode       || 'off',
+                brightness: l.brightness ?? 100,
+                override:   l.override   || 'off',
+            });
+            board.leds = {
+                led1: norm(data.leds.led1 || {}),
+                led2: norm(data.leds.led2 || {}),
+            };
+        }
     });
 
     socket.on('disconnect', () => {
@@ -198,6 +209,16 @@ app.post('/api/led/brightness', (req, res) => {
     res.json({ ok: true });
 });
 
+// POST /api/led/override  { led: 1|2, mode: "off"|"on"|"flash"|"pulse" }
+app.post('/api/led/override', (req, res) => {
+    const key = requireKey(req, res); if (!key) return;
+    const { led, mode } = req.body;
+    if (!led || !['on','off','flash','pulse'].includes(mode))
+        return res.status(400).json({ error: 'led (1|2) and mode (on|off|flash|pulse) required' });
+    emit(key, 'led_override', { led: parseInt(led), mode });
+    res.json({ ok: true });
+});
+
 // POST /api/brightness  { percent }
 app.post('/api/brightness', (req, res) => {
     const key = requireKey(req, res); if (!key) return;
@@ -321,34 +342,53 @@ hr{border:none;border-top:1px solid #2a2a2a;margin:18px 0}
   </div>
 
   <hr>
-  <h2>LED INDICATORS</h2>
+  <h2 onclick="toggleLed()" style="cursor:pointer;user-select:none">LED INDICATORS <span id="ledChevron" style="font-size:.7em;color:#666">&#9660;</span></h2>
+  <div id="ledBody" style="display:none">
+  <p style="font-size:.72em;color:#666;text-align:left;margin:0 0 10px">Override activates on new content when no one is present; cancels on any wake event.</p>
   <div style="margin-bottom:14px;text-align:left">
-    <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:5px">LED 1</label>
+    <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:5px">LED 1 &mdash; NORMAL MODE</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-      <button class="primary" onclick="cmd('led_mode',{led:1,mode:'off'})">OFF</button>
-      <button class="primary" onclick="cmd('led_mode',{led:1,mode:'on'})">ON</button>
-      <button class="primary" onclick="cmd('led_mode',{led:1,mode:'flash'})">FLASH</button>
-      <button class="primary" onclick="cmd('led_mode',{led:1,mode:'pulse'})">PULSE</button>
+      <button class="primary" onclick="srvLedMode(1,'off')">OFF</button>
+      <button class="primary" onclick="srvLedMode(1,'on')">ON</button>
+      <button class="primary" onclick="srvLedMode(1,'flash')">FLASH</button>
+      <button class="primary" onclick="srvLedMode(1,'pulse')">PULSE</button>
     </div>
     <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:3px">BRIGHTNESS &mdash; <span id="ls1">100</span>%</label>
     <input type="range" id="lb1" min="0" max="100" value="100"
       style="width:100%;accent-color:#ffaa00"
       oninput="document.getElementById('ls1').textContent=this.value"
       onchange="cmd('led_brightness',{led:1,percent:parseInt(this.value)})">
+    <label style="display:block;font-size:.72em;color:#cc8800;margin:8px 0 3px">OVERRIDE MODE</label>
+    <select id="lov1" onchange="srvLedOverride(1,this.value)"
+      style="width:100%;background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:.9em">
+      <option value="off">OFF</option>
+      <option value="on">ON</option>
+      <option value="flash">FLASH</option>
+      <option value="pulse">PULSE</option>
+    </select>
   </div>
   <div style="margin-bottom:14px;text-align:left">
-    <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:5px">LED 2</label>
+    <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:5px">LED 2 &mdash; NORMAL MODE</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-      <button class="primary" onclick="cmd('led_mode',{led:2,mode:'off'})">OFF</button>
-      <button class="primary" onclick="cmd('led_mode',{led:2,mode:'on'})">ON</button>
-      <button class="primary" onclick="cmd('led_mode',{led:2,mode:'flash'})">FLASH</button>
-      <button class="primary" onclick="cmd('led_mode',{led:2,mode:'pulse'})">PULSE</button>
+      <button class="primary" onclick="srvLedMode(2,'off')">OFF</button>
+      <button class="primary" onclick="srvLedMode(2,'on')">ON</button>
+      <button class="primary" onclick="srvLedMode(2,'flash')">FLASH</button>
+      <button class="primary" onclick="srvLedMode(2,'pulse')">PULSE</button>
     </div>
     <label style="display:block;font-size:.72em;color:#cc8800;margin-bottom:3px">BRIGHTNESS &mdash; <span id="ls2">100</span>%</label>
     <input type="range" id="lb2" min="0" max="100" value="100"
       style="width:100%;accent-color:#ffaa00"
       oninput="document.getElementById('ls2').textContent=this.value"
       onchange="cmd('led_brightness',{led:2,percent:parseInt(this.value)})">
+    <label style="display:block;font-size:.72em;color:#cc8800;margin:8px 0 3px">OVERRIDE MODE</label>
+    <select id="lov2" onchange="srvLedOverride(2,this.value)"
+      style="width:100%;background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:.9em">
+      <option value="off">OFF</option>
+      <option value="on">ON</option>
+      <option value="flash">FLASH</option>
+      <option value="pulse">PULSE</option>
+    </select>
+  </div>
   </div>
 
   <hr>
@@ -436,9 +476,45 @@ function removeGroup(id) {
   selectGroup(activeId);
 }
 
+// Feedback derived from the ESP's reported state after it processes the command.
+// The server relay is just a conduit — we only show success once the board responds.
+function boardFeedback(event, data, board) {
+  if (!board) return 'Sent — no board connected to confirm.';
+  const leds = board.leds || {};
+  switch (event) {
+    case 'set_row':
+      return 'Row ' + data.row + ' → "' + (board.rows[data.row] || '') + '"';
+    case 'set_all':
+      return 'Board updated — ' + board.rows.filter(r => r.trim()).length + ' row(s) set.';
+    case 'clear_row':
+      return 'Row ' + data.row + ' cleared.';
+    case 'wake':
+      return 'Display woken.';
+    case 'demo':
+      return 'Demo ' + (board.demo ? 'ON — cycling every 30 s.' : 'OFF.');
+    case 'brightness':
+      return 'Brightness set to ' + data.percent + '%.';
+    case 'timeout':
+      return data.minutes === 0 ? 'Display will never power off.' : 'Timeout set to ' + data.minutes + ' min.';
+    case 'led_mode': {
+      const l = leds['led' + data.led];
+      return 'LED ' + data.led + ' → ' + ((l && l.mode) || data.mode).toUpperCase() + '.';
+    }
+    case 'led_override': {
+      const l = leds['led' + data.led];
+      return 'LED ' + data.led + ' override → ' + ((l && l.override) || data.mode).toUpperCase() + '.';
+    }
+    case 'led_brightness':
+      return 'LED ' + data.led + ' brightness → ' + data.percent + '%.';
+    default:
+      return 'Done.';
+  }
+}
+
 async function cmd(event, data) {
   const k = currentKey();
   if (!k) { msg.textContent = 'Enter your API key in the tab above.'; return; }
+  msg.textContent = '…';
   try {
     const r = await fetch('/api/cmd', {
       method: 'POST',
@@ -446,10 +522,11 @@ async function cmd(event, data) {
       body: JSON.stringify({ event, data: data || {} })
     });
     const j = await r.json();
-    msg.textContent = r.ok ? 'OK' : 'Error: ' + JSON.stringify(j);
-    // Refresh board state ~800 ms after the command so the ESP has time to
-    // process it and push its updated state back to the server.
-    if (r.ok) setTimeout(refreshBoards, 800);
+    if (!r.ok) { msg.textContent = 'Error: ' + JSON.stringify(j); return; }
+    // Wait for the ESP to process the command and push its updated state back.
+    await new Promise(res => setTimeout(res, 800));
+    await refreshBoards();
+    msg.textContent = boardFeedback(event, data, currentBoards[0]);
   } catch(e) { msg.textContent = 'Failed: ' + e; }
 }
 
@@ -462,16 +539,27 @@ function renderPreview(board) {
     el.textContent = (rows[i] || '').trimEnd() || ' ';
   }
   const leds = board.leds || {};
-  const led1 = leds.led1 || { mode: 'off', brightness: 100, notify: false };
-  const led2 = leds.led2 || { mode: 'off', brightness: 100, notify: false };
+  const led1 = leds.led1 || { mode: 'off', brightness: 100, override: 'off' };
+  const led2 = leds.led2 || { mode: 'off', brightness: 100, override: 'off' };
   document.getElementById('ledPills').innerHTML = makePill('LED 1', led1) + makePill('LED 2', led2);
+  // Seed override selects and track current modes for validation.
+  [led1, led2].forEach((l, i) => {
+    const n = i + 1;
+    const sel = document.getElementById('lov' + n);
+    if (sel) sel.value = l.override || 'off';
+    srvLedModes[n] = l.mode || 'off';
+    srvUpdateOverrideSel(n);
+  });
 }
 
 function makePill(label, l) {
   const mode = (l.mode || 'off').toLowerCase();
-  const dot  = l.notify ? '<span class="notify-dot" title="Notify enabled">&#9679;</span>' : '';
+  const ov   = (l.override || 'off').toLowerCase();
+  const ovPart = (ov !== mode)
+    ? '<span style="color:#888;font-size:.9em"> → ' + ov.toUpperCase() + '</span>'
+    : '';
   return '<span class="led-pill led-' + mode + '">' + label + ' &#9679; ' +
-         mode.toUpperCase() + ' ' + (l.brightness || 0) + '%' + dot + '</span>';
+         mode.toUpperCase() + ' ' + (l.brightness || 0) + '%' + ovPart + '</span>';
 }
 
 document.getElementById('allForm').onsubmit = async e => {
@@ -479,6 +567,35 @@ document.getElementById('allForm').onsubmit = async e => {
   const rows = [0,1,2,3,4,5].map(i => (e.target['r'+i].value || '').toUpperCase());
   await cmd('set_all', { rows });
 };
+
+function toggleLed() {
+  const body = document.getElementById('ledBody');
+  const chev = document.getElementById('ledChevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  chev.innerHTML = open ? '&#9660;' : '&#9654;';
+}
+
+const srvLedModes = {1:'off', 2:'off'};
+function srvUpdateOverrideSel(n) {
+  const cur = srvLedModes[n];
+  const sel = document.getElementById('lov' + n);
+  if (!sel) return;
+  for (const opt of sel.options) opt.disabled = (opt.value === cur);
+  if (sel.value === cur) {
+    for (const opt of sel.options) {
+      if (!opt.disabled) { sel.value = opt.value; srvLedOverride(n, opt.value); break; }
+    }
+  }
+}
+async function srvLedMode(n, mode) {
+  await cmd('led_mode', { led: n, mode });
+  srvLedModes[n] = mode;
+  srvUpdateOverrideSel(n);
+}
+async function srvLedOverride(n, mode) {
+  await cmd('led_override', { led: n, mode });
+}
 
 function syncDemoBtn(on) {
   const btn = document.getElementById('demoBtn');

@@ -4,9 +4,13 @@
 // Pins are optional: define LED1_PIN and/or LED2_PIN in platformio.ini
 // build_flags.  If a pin is not defined the corresponding LED index is a no-op.
 //
-// Example platformio.ini build_flags:
-//   -DLED1_PIN=10
-//   -DLED2_PIN=11
+// Each LED has two modes:
+//   mode          — normal operating state (off / on / flash / pulse)
+//   overrideMode  — state while waiting for someone to notice new content
+//
+// Override activates when led_content_arrived() is called and overrideMode
+// differs from mode.  Override deactivates (returns to mode) when led_wake()
+// is called — i.e. on any button press, radar detection, or wake API call.
 //
 // LEDC channels 0 (LED1) and 1 (LED2); 8-bit resolution at 5 kHz.
 
@@ -15,29 +19,26 @@
 #include <Preferences.h>
 
 // ── Timing constants ─────────────────────────────────────────────────────────
-#define FLASH_PERIOD_MS   500UL   // half-period: 250 ms on, 250 ms off
+#define FLASH_PERIOD_MS  500UL    // half-period: on for 500 ms, off for 500 ms
 #define PULSE_PERIOD_MS  3000UL   // full breathing cycle
-#define NOTIFY_DURATION_MS 3000UL // how long a notification flash lasts
 
 // ── LEDC config ───────────────────────────────────────────────────────────────
 #define LEDC_FREQ_HZ   5000
-#define LEDC_RES_BITS  8          // 0-255 duty range
+#define LEDC_RES_BITS  8          // duty range 0–255
 
 // ── Per-LED state ─────────────────────────────────────────────────────────────
 typedef struct {
     uint8_t  pin;           // 0xFF = not fitted
-    LedMode  mode;
-    uint8_t  brightness;    // user-set, 0-100 %
-    uint8_t  dutyFull;      // 0-255, derived from brightness
-    bool     notifyEnabled; // auto-flash on new content / wake event
-    bool     notifying;     // currently running a notification override
-    LedMode  priorMode;     // mode to restore after notification ends
-    uint32_t notifyUntilMs;
+    LedMode  mode;          // normal operating state
+    LedMode  overrideMode;  // state while override is active
+    uint8_t  brightness;    // user-set 0–100 %
+    uint8_t  dutyFull;      // 0–255, derived from brightness
+    bool     overriding;    // true while override is active
 } LedState;
 
 static LedState g_led[2] = {
-    { 0xFF, LED_OFF, 100, 255, false, false, LED_OFF, 0 },
-    { 0xFF, LED_OFF, 100, 255, false, false, LED_OFF, 0 },
+    { 0xFF, LED_OFF, LED_OFF, 100, 255, false },
+    { 0xFF, LED_OFF, LED_OFF, 100, 255, false },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,38 +49,36 @@ static void applyDuty(uint8_t i, uint8_t duty) {
 }
 
 static uint8_t scaleDuty(uint8_t i, float fraction) {
-    // fraction 0.0..1.0 → scaled by dutyFull
     return (uint8_t)(g_led[i].dutyFull * fraction);
 }
 
 // ── NVS persistence ───────────────────────────────────────────────────────────
-// Namespace "leds", keys: "l0mode" "l0bright" "l0notify" "l1mode" …
+// Namespace "leds", keys: "l0mode" "l0bright" "l0over" "l1mode" …
 
 static void ledSave(uint8_t i) {
     Preferences p;
     p.begin("leds", false);
-    char km[8], kb[8], kn[8];
+    char km[8], kb[8], ko[8];
     snprintf(km, sizeof(km), "l%umode",   i);
     snprintf(kb, sizeof(kb), "l%ubright", i);
-    snprintf(kn, sizeof(kn), "l%unotify", i);
+    snprintf(ko, sizeof(ko), "l%uover",   i);
     p.putUChar(km, (uint8_t)g_led[i].mode);
     p.putUChar(kb, g_led[i].brightness);
-    p.putBool (kn, g_led[i].notifyEnabled);
+    p.putUChar(ko, (uint8_t)g_led[i].overrideMode);
     p.end();
 }
 
 static void ledLoad(uint8_t i) {
     Preferences p;
     p.begin("leds", true);
-    char km[8], kb[8], kn[8];
+    char km[8], kb[8], ko[8];
     snprintf(km, sizeof(km), "l%umode",   i);
     snprintf(kb, sizeof(kb), "l%ubright", i);
-    snprintf(kn, sizeof(kn), "l%unotify", i);
-    g_led[i].mode          = (LedMode)p.getUChar(km, (uint8_t)LED_OFF);
-    uint8_t bright         = p.getUChar(kb, 100);
-    g_led[i].notifyEnabled = p.getBool (kn, false);
+    snprintf(ko, sizeof(ko), "l%uover",   i);
+    g_led[i].mode         = (LedMode)p.getUChar(km, (uint8_t)LED_OFF);
+    uint8_t bright        = p.getUChar(kb, 100);
+    g_led[i].overrideMode = (LedMode)p.getUChar(ko, (uint8_t)LED_OFF);
     p.end();
-    // Apply brightness through the setter logic (updates dutyFull).
     g_led[i].brightness = bright;
     g_led[i].dutyFull   = (uint8_t)((uint16_t)bright * 255 / 100);
 }
@@ -91,7 +90,7 @@ void led_init() {
     g_led[0].pin = LED1_PIN;
     ledcAttach(LED1_PIN, LEDC_FREQ_HZ, LEDC_RES_BITS);
     ledLoad(0);
-    ledcWrite(LED1_PIN, 0);   // start dark; led_tick() applies mode each loop
+    ledcWrite(LED1_PIN, 0);
 #endif
 #ifdef LED2_PIN
     g_led[1].pin = LED2_PIN;
@@ -107,13 +106,7 @@ void led_tick() {
     for (uint8_t i = 0; i < 2; i++) {
         if (g_led[i].pin == 0xFF) continue;
 
-        // End notification override once the duration expires.
-        if (g_led[i].notifying && now >= g_led[i].notifyUntilMs) {
-            g_led[i].notifying = false;
-            g_led[i].mode      = g_led[i].priorMode;
-        }
-
-        LedMode effective = g_led[i].notifying ? LED_FLASH : g_led[i].mode;
+        LedMode effective = g_led[i].overriding ? g_led[i].overrideMode : g_led[i].mode;
 
         switch (effective) {
         case LED_OFF:
@@ -131,7 +124,7 @@ void led_tick() {
         }
 
         case LED_PULSE: {
-            float phase   = (float)(now % PULSE_PERIOD_MS) / (float)PULSE_PERIOD_MS;
+            float phase    = (float)(now % PULSE_PERIOD_MS) / (float)PULSE_PERIOD_MS;
             float fraction = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * phase);
             applyDuty(i, scaleDuty(i, fraction));
             break;
@@ -143,7 +136,7 @@ void led_tick() {
 void led_set_mode(uint8_t led, LedMode mode) {
     if (led >= 2) return;
     g_led[led].mode      = mode;
-    g_led[led].notifying = false;  // cancel any active notification
+    g_led[led].overriding = false;  // cancel active override — base mode changed
     ledSave(led);
 }
 
@@ -155,24 +148,32 @@ void led_set_brightness(uint8_t led, uint8_t percent) {
     ledSave(led);
 }
 
-void led_set_notify(uint8_t led, bool enable) {
+void led_set_override(uint8_t led, LedMode override_mode) {
     if (led >= 2) return;
-    g_led[led].notifyEnabled = enable;
+    g_led[led].overrideMode = override_mode;
     ledSave(led);
 }
 
-void led_notify(uint8_t led) {
-    if (led >= 2) return;
-    if (g_led[led].pin == 0xFF) return;
-    if (!g_led[led].notifying)
-        g_led[led].priorMode = g_led[led].mode;
-    g_led[led].notifying     = true;
-    g_led[led].notifyUntilMs = millis() + NOTIFY_DURATION_MS;
+void led_content_arrived() {
+    for (uint8_t i = 0; i < 2; i++) {
+        if (g_led[i].pin == 0xFF) continue;
+        // Only activate if override would actually look different.
+        if (g_led[i].overrideMode != g_led[i].mode) {
+            g_led[i].overriding = true;
+        }
+    }
 }
 
-LedMode led_get_mode(uint8_t led)       { return led < 2 ? g_led[led].mode           : LED_OFF; }
-uint8_t led_get_brightness(uint8_t led) { return led < 2 ? g_led[led].brightness      : 0;       }
-bool    led_get_notify(uint8_t led)     { return led < 2 ? g_led[led].notifyEnabled   : false;   }
+void led_wake() {
+    for (uint8_t i = 0; i < 2; i++) {
+        g_led[i].overriding = false;
+    }
+}
+
+LedMode     led_get_mode(uint8_t led)       { return led < 2 ? g_led[led].mode         : LED_OFF; }
+uint8_t     led_get_brightness(uint8_t led) { return led < 2 ? g_led[led].brightness    : 0;       }
+LedMode     led_get_override(uint8_t led)   { return led < 2 ? g_led[led].overrideMode  : LED_OFF; }
+bool        led_is_overriding(uint8_t led)  { return led < 2 ? g_led[led].overriding    : false;   }
 
 const char* led_mode_str(LedMode mode) {
     switch (mode) {

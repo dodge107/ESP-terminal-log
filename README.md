@@ -189,15 +189,15 @@ After 60 seconds the display transitions to a random preset with the normal casc
   RSSI      : -62 dBm (2 bars)
   Socket.IO : connected  192.168.1.10:3500
   Brightness: 78%
-  LED 1     : pulse  100%  notify=on
-  LED 2     : off    100%  notify=off
+  LED 1     : pulse  100%  override=flash
+  LED 2     : off    100%  override=off
   Heap free : 214320 bytes
   Heap min  : 201440 bytes
   Uptime    : 47 s
 ────────────────────────────────────
 ```
 
-The Socket.IO line shows `connected`, `connecting`, or `disabled` along with the configured host and port. Brightness reflects the current user-set level. LED lines show mode, brightness percentage, and whether notification flash is enabled.
+The Socket.IO line shows `connected`, `connecting`, or `disabled` along with the configured host and port. Brightness reflects the current user-set level. LED lines show mode, brightness percentage, and the current override mode.
 
 
 
@@ -226,7 +226,7 @@ Once connected, open `http://<board-ip>/` in any browser.
 The UI has three tabs:
 
 - **BOARD** — enter text for each row and click **Update Board**. Also contains the brightness slider, display-off timeout, wake button, demo mode toggle, and WiFi reset. The API key is saved to `localStorage` so you only enter it once per browser.
-- **SETTINGS** — configure the Socket.IO remote server connection (host, port, enable/disable). Changes take effect immediately without rebooting.
+- **SETTINGS** — configure the Socket.IO remote server connection (host, port, enable/disable), and control the LED indicators (normal mode, brightness, override mode). Changes take effect immediately without rebooting.
 - **API DOCS** — inline reference for all HTTP endpoints with curl examples.
 
 The board's IP address is printed in the serial monitor after connecting and is also returned by `GET /status`.
@@ -256,9 +256,9 @@ IP="192.168.1.42"
 | `GET` | `/config/sio` | Read current Socket.IO config and connection state |
 | `POST` | `/config/sio` | Update Socket.IO config and reconnect immediately |
 | `GET` | `/led/status` | LED state for both indicators as JSON |
-| `POST` | `/led/<1\|2>/mode` | Set LED mode (`on`, `off`, `flash`, `pulse`) |
+| `POST` | `/led/<1\|2>/mode` | Set LED normal mode (`on`, `off`, `flash`, `pulse`) |
 | `POST` | `/led/<1\|2>/brightness` | Set LED brightness 0–100 |
-| `POST` | `/led/<1\|2>/notify` | Enable/disable notification flash (`on` / `off`) |
+| `POST` | `/led/<1\|2>/override` | Set LED override mode — activates on new content when unwatched |
 | `POST` | `/wifi/reset` | Clear WiFi credentials and reboot |
 
 ### Examples
@@ -330,8 +330,8 @@ The display accepts `A–Z`, `0–9`, and `space - : / . !`. Lowercase is upperc
   "min_heap":  201440,
   "uptime_s":  47,
   "brightness": 78,
-  "led1": { "mode": "pulse", "brightness": 100, "notify": true },
-  "led2": { "mode": "off",   "brightness": 100, "notify": false }
+  "led1": { "mode": "pulse", "brightness": 100, "override": "flash" },
+  "led2": { "mode": "off",   "brightness": 100, "override": "off"  }
 }
 ```
 
@@ -367,24 +367,28 @@ Either pin is optional — define only one if you have a single LED.
 | `flash` | 500 ms on / 500 ms off |
 | `pulse` | Sine-wave breathing over a 3-second cycle |
 
-### Notification mode
+### Override mode
 
-Each LED can be set to auto-flash for 3 seconds when triggered by:
+Each LED has a **normal mode** and an **override mode**. The override mode is the mode the LED switches to when new content arrives and nobody is present — it is an indefinite attention signal, not a timed flash.
 
-- A new message received via any interface (HTTP API, Socket.IO)
-- A button press or mmWave radar detection (if those wake sources are enabled)
+| Event | LED behaviour |
+|-------|--------------|
+| New content arrives (HTTP or Socket.IO) | Switches to override mode (if override ≠ normal) |
+| Wake event — button press, radar, `POST /display/wake`, or SIO `wake` | Returns to normal mode |
 
-The LED returns to its previous mode after the notification ends.
+The override mode must differ from the normal mode — setting them the same is rejected with a `400` error. The board and server UIs enforce this by disabling the matching option in the override selector. Settings are persisted to NVS and survive reboots.
+
+**Example:** LED is set to `on` (always lit) with override `flash`. While the display is unattended, new content arrives — the LED starts flashing to attract attention. When someone presses the button or walks past the radar, the display wakes and the LED returns to steady `on`.
 
 ### Interfaces
 
 | Interface | How |
 |-----------|-----|
-| Web UI | LED section on the BOARD tab — mode buttons, brightness slider, notify checkbox |
-| HTTP API | `POST /led/<1\|2>/mode`, `POST /led/<1\|2>/brightness`, `POST /led/<1\|2>/notify` |
-| Shell script | `led`, `led-bright`, `led-notify` commands; `l`, `L`, `n` menu options |
-| Socket.IO | `led_mode` and `led_brightness` events from the server |
-| Server dashboard | Mode buttons and brightness sliders for each LED |
+| Web UI | LED section on the SETTINGS tab — mode buttons, brightness slider, override mode dropdown |
+| HTTP API | `POST /led/<1\|2>/mode`, `POST /led/<1\|2>/brightness`, `POST /led/<1\|2>/override` |
+| Shell script | `led`, `led-bright`, `led-override` commands; `l`, `L`, `o` menu options |
+| Socket.IO | `led_mode`, `led_brightness`, and `led_override` events from the server |
+| Server dashboard | Mode buttons, brightness sliders, and override dropdowns for each LED |
 
 ### HTTP examples
 
@@ -401,11 +405,11 @@ curl -X POST http://$IP/led/2/brightness \
      -H "Content-Type: text/plain" \
      -d "60"
 
-# Enable notification flash on LED 1
-curl -X POST http://$IP/led/1/notify \
+# Set LED 1 override to flash (attracts attention when new content arrives unattended)
+curl -X POST http://$IP/led/1/override \
      -H "X-Api-Key: $KEY" \
      -H "Content-Type: text/plain" \
-     -d "on"
+     -d "flash"
 
 # Get LED status
 curl http://$IP/led/status -H "X-Api-Key: $KEY"
@@ -414,18 +418,19 @@ curl http://$IP/led/status -H "X-Api-Key: $KEY"
 LED status response:
 ```json
 {
-  "led1": { "mode": "pulse", "brightness": 100, "notify": true },
-  "led2": { "mode": "off",   "brightness": 100, "notify": false }
+  "led1": { "mode": "on",  "brightness": 100, "override": "flash" },
+  "led2": { "mode": "off", "brightness": 100, "override": "off"   }
 }
 ```
 
 ### Shell script examples
 
 ```sh
-./scripts/flipboard.sh led 1 pulse
-./scripts/flipboard.sh led-bright 1 60
-./scripts/flipboard.sh led-notify 1 on
-./scripts/flipboard.sh led 2 flash
+./scripts/flipboard.sh led 1 on
+./scripts/flipboard.sh led-override 1 flash
+./scripts/flipboard.sh led-bright 1 80
+./scripts/flipboard.sh led 2 pulse
+./scripts/flipboard.sh led-override 2 off
 ```
 
 ---
@@ -536,8 +541,9 @@ The dashboard stores the key in `localStorage`. All REST calls include `X-Api-Ke
 | `demo` | `{ mode: "on"\|"off" }` | Toggle demo mode |
 | `timeout` | `{ minutes }` | Set idle power-off timeout |
 | `brightness` | `{ percent }` | Set brightness 0–100 |
-| `led_mode` | `{ led: 1\|2, mode }` | Set LED mode: `on`, `off`, `flash`, `pulse` |
+| `led_mode` | `{ led: 1\|2, mode }` | Set LED normal mode: `on`, `off`, `flash`, `pulse` |
 | `led_brightness` | `{ led: 1\|2, percent }` | Set LED brightness 0–100 |
+| `led_override` | `{ led: 1\|2, mode }` | Set LED override mode (must differ from normal mode) |
 
 ---
 
@@ -635,7 +641,7 @@ BOARD_IP_OVERRIDE=192.168.1.42 API_KEY_OVERRIDE=yourkey ./scripts/flipboard.sh s
 | `brightness [0-100]` | Set display brightness percentage |
 | `led <1\|2> [mode]` | Set LED mode: `on`, `off`, `flash`, `pulse` |
 | `led-bright <1\|2> [%]` | Set LED brightness 0–100 |
-| `led-notify <1\|2> [on\|off]` | Enable/disable notification flash on new content or wake |
+| `led-override <1\|2> [mode]` | Set LED override mode: `on`, `off`, `flash`, `pulse` |
 | `wifi-reset` | Erase saved WiFi credentials and reboot |
 | *(no command)* | Launch the interactive menu |
 
@@ -710,7 +716,7 @@ src/
   travel_board.h    - Public board API
   sio_client.cpp    - Socket.IO / WebSocket client (ws:// only, no library)
   sio_client.h      - Socket.IO client public API
-  led_indicator.cpp - PWM LED driver (off/on/flash/pulse, notification mode)
+  led_indicator.cpp - PWM LED driver (off/on/flash/pulse, override mode)
   led_indicator.h   - LED public API
   presets.h         - All demo presets (add new ones here freely)
   secrets.h         - API key (gitignored, create from secrets.h.example)

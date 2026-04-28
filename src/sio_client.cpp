@@ -395,6 +395,7 @@ static void dispatch(const char* event, JsonVariantConst data) {
     } else if (strcmp(event, "wake") == 0) {
         board_wake();
         board_replay();
+        led_wake();
 
     } else if (strcmp(event, "demo") == 0) {
         extern void triggerDemoMode(bool on);
@@ -424,6 +425,14 @@ static void dispatch(const char* event, JsonVariantConst data) {
         int pct = data["percent"] | -1;
         if (pct < 0 || pct > 100) return;
         led_set_brightness((uint8_t)(led - 1), (uint8_t)pct);
+
+    } else if (strcmp(event, "led_override") == 0) {
+        int led = (data["led"] | -1);
+        if (led < 1 || led > 2) return;
+        const char* modeStr = data["mode"] | "off";
+        LedMode overrideMode = led_mode_from_str(modeStr);
+        if (overrideMode != led_get_mode((uint8_t)(led - 1)))
+            led_set_override((uint8_t)(led - 1), overrideMode);
 
     }
 }

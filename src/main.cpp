@@ -165,45 +165,6 @@ tr:nth-child(even) td{background:#141414}
     <button type="button" id="demoBtn" class="primary" onclick="toggleDemo()">START DEMO</button>
   </div>
   <hr>
-  <h2>LED INDICATORS</h2>
-  <p style="font-size:.78em;color:#888;margin:0 0 10px">Requires LED1_PIN / LED2_PIN build flags. Controls are always visible.</p>
-  <h3 style="font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:12px 0 6px">LED 1</h3>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-    <button class="primary" onclick="ledMode(1,'off')">OFF</button>
-    <button class="primary" onclick="ledMode(1,'on')">ON</button>
-    <button class="primary" onclick="ledMode(1,'flash')">FLASH</button>
-    <button class="primary" onclick="ledMode(1,'pulse')">PULSE</button>
-  </div>
-  <div class="field">
-    <label>LED 1 BRIGHTNESS — <span id="lb1val">100</span>%</label>
-    <input type="range" id="lb1" min="0" max="100" value="100"
-      style="width:100%;accent-color:#ffaa00"
-      oninput="document.getElementById('lb1val').textContent=this.value"
-      onchange="ledBright(1,this.value)">
-  </div>
-  <div class="field">
-    <label><input type="checkbox" id="ln1" onchange="ledNotify(1,this.checked)" style="accent-color:#ffaa00">
-    &nbsp;NOTIFY ON NEW MESSAGE / WAKE</label>
-  </div>
-  <h3 style="font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:12px 0 6px">LED 2</h3>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-    <button class="primary" onclick="ledMode(2,'off')">OFF</button>
-    <button class="primary" onclick="ledMode(2,'on')">ON</button>
-    <button class="primary" onclick="ledMode(2,'flash')">FLASH</button>
-    <button class="primary" onclick="ledMode(2,'pulse')">PULSE</button>
-  </div>
-  <div class="field">
-    <label>LED 2 BRIGHTNESS — <span id="lb2val">100</span>%</label>
-    <input type="range" id="lb2" min="0" max="100" value="100"
-      style="width:100%;accent-color:#ffaa00"
-      oninput="document.getElementById('lb2val').textContent=this.value"
-      onchange="ledBright(2,this.value)">
-  </div>
-  <div class="field">
-    <label><input type="checkbox" id="ln2" onchange="ledNotify(2,this.checked)" style="accent-color:#ffaa00">
-    &nbsp;NOTIFY ON NEW MESSAGE / WAKE</label>
-  </div>
-  <hr>
   <button class="danger" onclick="resetWifi()">RESET WIFI SETTINGS</button>
 </div>
 
@@ -239,6 +200,60 @@ tr:nth-child(even) td{background:#141414}
   <div class="field">
     <label>SOCKET.IO STATUS</label>
     <div id="sStatus" style="font-size:.82em;color:#888">Loading…</div>
+  </div>
+
+  <hr>
+  <h2>LED INDICATORS</h2>
+  <p style="font-size:.78em;color:#888;margin:0 0 10px">Requires LED1_PIN / LED2_PIN build flags. Each LED has a normal mode and an override mode that activates when new content arrives and nobody is present. Override cancels on any wake event.</p>
+  <h3 style="font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:12px 0 6px">LED 1</h3>
+  <div class="field"><label>NORMAL MODE</label>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button class="primary" onclick="ledMode(1,'off')">OFF</button>
+    <button class="primary" onclick="ledMode(1,'on')">ON</button>
+    <button class="primary" onclick="ledMode(1,'flash')">FLASH</button>
+    <button class="primary" onclick="ledMode(1,'pulse')">PULSE</button>
+  </div></div>
+  <div class="field">
+    <label>BRIGHTNESS — <span id="lb1val">100</span>%</label>
+    <input type="range" id="lb1" min="0" max="100" value="100"
+      style="width:100%;accent-color:#ffaa00"
+      oninput="document.getElementById('lb1val').textContent=this.value"
+      onchange="ledBright(1,this.value)">
+  </div>
+  <div class="field">
+    <label>OVERRIDE MODE — activates on new content when unwatched</label>
+    <select id="lov1" onchange="ledOverride(1,this.value)"
+      style="width:100%;background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:.9em">
+      <option value="off">OFF</option>
+      <option value="on">ON</option>
+      <option value="flash">FLASH</option>
+      <option value="pulse">PULSE</option>
+    </select>
+  </div>
+  <h3 style="font-size:.78em;letter-spacing:.15em;color:#cc8800;margin:12px 0 6px">LED 2</h3>
+  <div class="field"><label>NORMAL MODE</label>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button class="primary" onclick="ledMode(2,'off')">OFF</button>
+    <button class="primary" onclick="ledMode(2,'on')">ON</button>
+    <button class="primary" onclick="ledMode(2,'flash')">FLASH</button>
+    <button class="primary" onclick="ledMode(2,'pulse')">PULSE</button>
+  </div></div>
+  <div class="field">
+    <label>BRIGHTNESS — <span id="lb2val">100</span>%</label>
+    <input type="range" id="lb2" min="0" max="100" value="100"
+      style="width:100%;accent-color:#ffaa00"
+      oninput="document.getElementById('lb2val').textContent=this.value"
+      onchange="ledBright(2,this.value)">
+  </div>
+  <div class="field">
+    <label>OVERRIDE MODE — activates on new content when unwatched</label>
+    <select id="lov2" onchange="ledOverride(2,this.value)"
+      style="width:100%;background:#1a1a1a;color:#ffaa00;border:1px solid #444;padding:6px 8px;font-family:monospace;font-size:.9em">
+      <option value="off">OFF</option>
+      <option value="on">ON</option>
+      <option value="flash">FLASH</option>
+      <option value="pulse">PULSE</option>
+    </select>
   </div>
 
 </div><!-- /settings -->
@@ -437,9 +452,12 @@ async function toggleDemo(){
 async function setBright(){
   const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
   const v=document.getElementById('bright').value;
-  try{ await fetch('/display/brightness',{method:'POST',
-    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v}); }
-  catch(e){msg.textContent='Brightness failed: '+e;}
+  msg.textContent='Setting brightness…';
+  try{
+    const r=await fetch('/display/brightness',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v});
+    msg.textContent=r.ok?'Brightness set to '+v+'%.':'Error '+r.status;
+  }catch(e){msg.textContent='Brightness failed: '+e;}
 }
 // Seed slider from live status on load
 (async()=>{
@@ -464,23 +482,44 @@ async function wakeDisplay(){
     msg.textContent=r.ok?'Display woken.':'Error '+r.status;
   }catch(err){msg.textContent='Failed: '+err;}
 }
+const ledModes={1:'off',2:'off'};
+function updateOverrideSel(n){
+  const cur=ledModes[n];
+  const sel=document.getElementById('lov'+n);
+  for(const opt of sel.options) opt.disabled=(opt.value===cur);
+  if(sel.value===cur){
+    for(const opt of sel.options){
+      if(!opt.disabled){sel.value=opt.value; ledOverride(n,opt.value); break;}
+    }
+  }
+}
 async function ledMode(n,mode){
   const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
-  try{ await fetch('/led/'+n+'/mode',{method:'POST',
-    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:mode}); }
-  catch(e){msg.textContent='LED failed: '+e;}
+  msg.textContent='Setting LED '+n+' mode…';
+  try{
+    const r=await fetch('/led/'+n+'/mode',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:mode});
+    if(r.ok){ ledModes[n]=mode; updateOverrideSel(n);
+      msg.textContent='LED '+n+' → '+mode.toUpperCase()+'.';
+    }else{ msg.textContent='Error '+r.status; }
+  }catch(e){msg.textContent='LED failed: '+e;}
 }
 async function ledBright(n,v){
   const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
-  try{ await fetch('/led/'+n+'/brightness',{method:'POST',
-    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v}); }
-  catch(e){msg.textContent='LED failed: '+e;}
+  msg.textContent='Setting LED '+n+' brightness…';
+  try{
+    const r=await fetch('/led/'+n+'/brightness',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:v});
+    msg.textContent=r.ok?'LED '+n+' brightness → '+v+'%.':'Error '+r.status;
+  }catch(e){msg.textContent='LED failed: '+e;}
 }
-async function ledNotify(n,en){
+async function ledOverride(n,mode){
   const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
-  try{ await fetch('/led/'+n+'/notify',{method:'POST',
-    headers:{'Content-Type':'text/plain','X-Api-Key':k},body:en?'on':'off'}); }
-  catch(e){msg.textContent='LED failed: '+e;}
+  try{
+    const r=await fetch('/led/'+n+'/override',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:mode});
+    if(!r.ok) msg.textContent='LED override error '+r.status;
+  }catch(e){msg.textContent='LED override failed: '+e;}
 }
 // Seed LED controls from live status on load
 (async()=>{
@@ -494,7 +533,10 @@ async function ledNotify(n,en){
       const b=j[key].brightness;
       document.getElementById('lb'+n).value=b;
       document.getElementById('lb'+n+'val').textContent=b;
-      document.getElementById('ln'+n).checked=j[key].notify;
+      const ov=j[key].override||'off';
+      document.getElementById('lov'+n).value=ov;
+      ledModes[n]=j[key].mode||'off';
+      updateOverrideSel(n);
     });
   }catch(e){}
 })();
@@ -618,8 +660,8 @@ static void handleStatus() {
     snprintf(buf, sizeof(buf),
         "{\"wifi\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"bars\":%d,"
         "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu,\"brightness\":%u,"
-        "\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s},"
-        "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s}}",
+        "\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"},"
+        "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"}}",
         WiFi.SSID().c_str(),
         WiFi.localIP().toString().c_str(),
         (int)WiFi.RSSI(),
@@ -628,8 +670,8 @@ static void handleStatus() {
         (unsigned long)ESP.getMinFreeHeap(),
         millis() / 1000,
         board_get_brightness(),
-        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_get_notify(0) ? "true" : "false",
-        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_get_notify(1) ? "true" : "false");
+        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_mode_str(led_get_override(0)),
+        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_mode_str(led_get_override(1)));
     server.send(200, "application/json", buf);
 }
 
@@ -818,32 +860,32 @@ void pushBoardState() {
     char r[6][22];
     for (uint8_t i = 0; i < 6; i++) board_get_row_text(i, r[i], sizeof(r[i]));
 
-    char json[420];
+    char json[440];
     snprintf(json, sizeof(json),
         "{\"rows\":[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"],"
         "\"demo\":%s,"
-        "\"leds\":{\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s},"
-                  "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s}}}",
+        "\"leds\":{\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"},"
+                  "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"}}}",
         r[0], r[1], r[2], r[3], r[4], r[5],
         g_demoMode ? "true" : "false",
-        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_get_notify(0) ? "true" : "false",
-        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_get_notify(1) ? "true" : "false");
+        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_mode_str(led_get_override(0)),
+        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_mode_str(led_get_override(1)));
 
     sio_send("state", json);
 }
 
-// Fire notification flash on any LED that has notify enabled.
+// Activate override mode on LEDs where override differs from base mode.
 // Called on new content from HTTP or Socket.IO.
 void triggerContentNotify() {
-    for (uint8_t i = 0; i < 2; i++)
-        if (led_get_notify(i)) led_notify(i);
+    led_content_arrived();
 }
 
-// Shared wake logic: restore display and replay animation.
+// Shared wake logic: restore display, replay animation, cancel LED override.
 static void triggerWake(const char* source) {
     Serial.printf("[WAKE] triggered by %s\n", source);
     board_wake();
     board_replay();
+    led_wake();
 }
 
 // POST /display/wake
@@ -907,28 +949,36 @@ static void handleLedBrightness() {
     server.send(200, "text/plain", "ok");
 }
 
-static void handleLedNotify() {
+// POST /led/<1|2>/override   body: off | on | flash | pulse
+// Sets the mode the LED switches to when new content arrives unattended.
+// The override mode must differ from the LED's base mode.
+static void handleLedOverride() {
     if (rateLimited()) return;
     if (!authenticated()) return;
     int n = server.uri().charAt(5) - '1';
     if (n < 0 || n > 1) { server.send(400, "text/plain", "led must be 1 or 2"); return; }
     String body = server.arg("plain"); body.trim();
     for (int i = 0; i < (int)body.length(); i++) body[i] = tolower(body[i]);
-    bool en = (body == "on" || body == "1" || body == "true");
-    led_set_notify((uint8_t)n, en);
-    Serial.printf("[HTTP] POST /led/%d/notify  %s\n", n + 1, en ? "on" : "off");
+    LedMode overrideMode = led_mode_from_str(body.c_str());
+    if (overrideMode == led_get_mode((uint8_t)n)) {
+        server.send(400, "application/json",
+            "{\"error\":\"override mode must differ from base mode\"}");
+        return;
+    }
+    led_set_override((uint8_t)n, overrideMode);
+    Serial.printf("[HTTP] POST /led/%d/override  %s\n", n + 1, led_mode_str(overrideMode));
     server.send(200, "text/plain", "ok");
 }
 
 static void handleLedStatus() {
     if (rateLimited()) return;
     if (!authenticated()) return;
-    char buf[128];
+    char buf[160];
     snprintf(buf, sizeof(buf),
-        "{\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s},"
-         "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"notify\":%s}}",
-        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_get_notify(0) ? "true" : "false",
-        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_get_notify(1) ? "true" : "false");
+        "{\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"},"
+         "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"}}",
+        led_mode_str(led_get_mode(0)), led_get_brightness(0), led_mode_str(led_get_override(0)),
+        led_mode_str(led_get_mode(1)), led_get_brightness(1), led_mode_str(led_get_override(1)));
     server.send(200, "application/json", buf);
 }
 
@@ -1050,7 +1100,7 @@ static void setupRoutes() {
     for (int i = 1; i <= 2; i++) {
         server.on(String("/led/") + i + "/mode",       HTTP_POST, handleLedMode);
         server.on(String("/led/") + i + "/brightness", HTTP_POST, handleLedBrightness);
-        server.on(String("/led/") + i + "/notify",     HTTP_POST, handleLedNotify);
+        server.on(String("/led/") + i + "/override",   HTTP_POST, handleLedOverride);
     }
 
     // Register one POST and one DELETE handler per row (rows 0–5).
@@ -1138,12 +1188,12 @@ static void printStatus() {
         Serial.println("  Socket.IO : disabled");
     }
     Serial.printf("  Brightness: %u%%\n",      board_get_brightness());
-    Serial.printf("  LED 1     : %s  %u%%  notify=%s\n",
+    Serial.printf("  LED 1     : %s  %u%%  override=%s\n",
                   led_mode_str(led_get_mode(0)), led_get_brightness(0),
-                  led_get_notify(0) ? "on" : "off");
-    Serial.printf("  LED 2     : %s  %u%%  notify=%s\n",
+                  led_mode_str(led_get_override(0)));
+    Serial.printf("  LED 2     : %s  %u%%  override=%s\n",
                   led_mode_str(led_get_mode(1)), led_get_brightness(1),
-                  led_get_notify(1) ? "on" : "off");
+                  led_mode_str(led_get_override(1)));
     Serial.printf("  Heap free : %lu bytes\n", (unsigned long)ESP.getFreeHeap());
     Serial.printf("  Heap min  : %lu bytes\n", (unsigned long)ESP.getMinFreeHeap());
     Serial.printf("  Uptime    : %lu s\n",     millis() / 1000);
@@ -1272,7 +1322,6 @@ void loop() {
         if (!state && g_lastBtnState && (now - g_lastBtnMs) > 50) {
             g_lastBtnMs = now;
             triggerWake("button");
-            triggerContentNotify();
         }
         g_lastBtnState = state;
     }
@@ -1281,7 +1330,7 @@ void loop() {
     {
         bool state = digitalRead(WAKE_RADAR_PIN);  // HIGH = presence detected
         // Rising edge only — don't re-trigger while presence is held
-        if (state && !g_lastRadarState) { triggerWake("radar"); triggerContentNotify(); }
+        if (state && !g_lastRadarState) { triggerWake("radar"); }
         g_lastRadarState = state;
     }
 #endif

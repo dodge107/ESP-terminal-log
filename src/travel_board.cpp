@@ -121,6 +121,7 @@ static U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(
 // ─── Module-level state ──────────────────────────────────────────────────────
 static uint16_t g_flipMs   = 60;    // ms between consecutive glyph advances
 static uint8_t  g_wifiBars = 0;     // 0–3; updated by the caller
+static bool     g_showSeparators = true;  // show dotted separator lines between rows
 
 // ─── Burn-in protection ───────────────────────────────────────────────────────
 #define BURNIN_DIM_MS        (30UL * 1000UL)          // 30 s → dim to ~10 % contrast
@@ -282,6 +283,9 @@ void board_settle() {
 
 void board_set_wifi_bars(uint8_t bars) { g_wifiBars = bars > 3 ? 3 : bars; }
 void board_set_sep_gap(uint8_t px)     { g_sepGap   = px; }
+
+void board_set_show_separators(bool show) { g_showSeparators = show; }
+bool board_get_show_separators()          { return g_showSeparators; }
 
 void board_wake() {
     g_lastDataMs = millis();
@@ -461,7 +465,7 @@ void board_tick() {
         //   y = SEPARATOR(i) = BASELINE(i) + 1 = 11 + i×10.
         //   Dots every 3 px from x=2 to x=127, leaving a 1 px gap between dots.
         //   This creates a dashed rule: ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
-        if (i < NUM_ROWS - 1) {
+        if (g_showSeparators && i < NUM_ROWS - 1) {
             const uint8_t sy = BASELINE(i) + g_sepGap;
             for (uint8_t x = LEFT_PAD; x <= 127; x += 4)
                 u8g2.drawPixel(x, sy);

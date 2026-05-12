@@ -68,6 +68,24 @@ static void sioSaveConfig(bool enabled, const char* host, uint16_t port) {
                   enabled, host, port);
 }
 
+// ─── Display config (persisted in NVS via Preferences) ───────────────────────
+static bool g_showSeparators = true;  // default: show dotted separator lines
+
+static void displayLoadConfig() {
+    Preferences prefs;
+    prefs.begin("display", true);   // read-only
+    g_showSeparators = prefs.getBool("separators", true);
+    prefs.end();
+}
+
+static void displaySaveSeparators(bool show) {
+    Preferences prefs;
+    prefs.begin("display", false);  // read-write
+    prefs.putBool("separators", show);
+    prefs.end();
+    Serial.printf("[DISPLAY] separators=%d saved\n", show);
+}
+
 // ─── Wake-source pins ─────────────────────────────────────────────────────────
 // Define WAKE_BTN_PIN and/or WAKE_RADAR_PIN in platformio.ini build_flags to
 // enable the corresponding wake source.  Both are optional and independent.
@@ -200,6 +218,17 @@ tr:nth-child(even) td{background:#141414}
   <div class="field">
     <label>SOCKET.IO STATUS</label>
     <div id="sStatus" style="font-size:.82em;color:#888">Loading…</div>
+  </div>
+
+  <hr>
+  <h2>DISPLAY</h2>
+  <p style="font-size:.78em;color:#888;margin:0 0 10px">Toggle the dotted separator lines between rows. Changes apply immediately and survive reboots.</p>
+  <div class="field">
+    <label>ROW SEPARATORS</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="primary" id="sepOn" onclick="setSeparators(true)">SHOW</button>
+      <button class="primary" id="sepOff" onclick="setSeparators(false)">HIDE</button>
+    </div>
   </div>
 
   <hr>
@@ -552,6 +581,30 @@ async function setTimeo(){
     msg.textContent=r.ok?'Timeout updated.':'Error '+r.status;
   }catch(err){msg.textContent='Failed: '+err;}
 }
+async function setSeparators(show){
+  const k=keyEl.value.trim(); localStorage.setItem('fb_key',k);
+  msg.textContent='Updating…';
+  try{
+    const r=await fetch('/config/separators',{method:'POST',
+      headers:{'Content-Type':'text/plain','X-Api-Key':k},body:show?'on':'off'});
+    if(r.ok){
+      document.getElementById('sepOn').style.background=show?'#44aa22':'';
+      document.getElementById('sepOff').style.background=show?'':'#880000';
+      msg.textContent=show?'Separators shown.':'Separators hidden.';
+    }else{msg.textContent='Error '+r.status;}
+  }catch(e){msg.textContent='Failed: '+e;}
+}
+// Seed separator control from live config on load
+(async()=>{
+  try{
+    const k=keyEl.value.trim(); if(!k) return;
+    const r=await fetch('/config/separators',{headers:{'X-Api-Key':k}});
+    if(!r.ok) return;
+    const j=await r.json();
+    document.getElementById('sepOn').style.background=j.separators?'#44aa22':'';
+    document.getElementById('sepOff').style.background=j.separators?'':'#880000';
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
@@ -659,7 +712,7 @@ static void handleStatus() {
     char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"wifi\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"bars\":%d,"
-        "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu,\"brightness\":%u,"
+        "\"free_heap\":%lu,\"min_heap\":%lu,\"uptime_s\":%lu,\"brightness\":%u,\"separators\":%s,"
         "\"led1\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"},"
         "\"led2\":{\"mode\":\"%s\",\"brightness\":%u,\"override\":\"%s\"}}",
         WiFi.SSID().c_str(),
@@ -669,7 +722,7 @@ static void handleStatus() {
         (unsigned long)ESP.getFreeHeap(),
         (unsigned long)ESP.getMinFreeHeap(),
         millis() / 1000,
-        board_get_brightness(),
+        board_get_brightness(), g_showSeparators ? "true" : "false",
         led_mode_str(led_get_mode(0)), led_get_brightness(0), led_mode_str(led_get_override(0)),
         led_mode_str(led_get_mode(1)), led_get_brightness(1), led_mode_str(led_get_override(1)));
     server.send(200, "application/json", buf);
@@ -1059,6 +1112,38 @@ static void handlePostSioConfig() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+// GET /config/separators
+// Returns whether dotted separator lines are shown between rows.
+static void handleGetSeparatorsConfig() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String json = "{\"separators\":";
+    json += g_showSeparators ? "true" : "false";
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
+// POST /config/separators
+// Toggle dotted separator lines between rows.  Body: "on" or "off".
+// Persisted to NVS and applied immediately.
+static void handlePostSeparatorsConfig() {
+    if (rateLimited()) return;
+    if (!authenticated()) return;
+    String body = server.arg("plain");
+    body.trim();
+    for (int i = 0; i < (int)body.length(); i++) body[i] = tolower(body[i]);
+    if (body != "on" && body != "off") {
+        server.send(400, "application/json", "{\"error\":\"body must be 'on' or 'off'\"}");
+        return;
+    }
+    bool show = (body == "on");
+    g_showSeparators = show;
+    board_set_show_separators(show);
+    displaySaveSeparators(show);
+    Serial.printf("[HTTP] POST /config/separators  %s\n", show ? "on" : "off");
+    server.send(200, "text/plain", "ok");
+}
+
 // GET /
 // Serves the browser-based control UI. No authentication required so the
 // page loads in any browser; the API key is entered inside the page itself.
@@ -1096,6 +1181,8 @@ static void setupRoutes() {
     server.on("/display/demo",      HTTP_POST, handleDemo);
     server.on("/config/sio",        HTTP_GET,  handleGetSioConfig);
     server.on("/config/sio",        HTTP_POST, handlePostSioConfig);
+    server.on("/config/separators", HTTP_GET,  handleGetSeparatorsConfig);
+    server.on("/config/separators", HTTP_POST, handlePostSeparatorsConfig);
     server.on("/led/status",        HTTP_GET,  handleLedStatus);
     for (int i = 1; i <= 2; i++) {
         server.on(String("/led/") + i + "/mode",       HTTP_POST, handleLedMode);
@@ -1229,6 +1316,8 @@ void setup() {
 
     board_init();
     led_init();
+    displayLoadConfig();
+    board_set_show_separators(g_showSeparators);
     board_set_all(kBoot);
     board_settle();   // snap to final text immediately - loop() won't run during WiFiManager
 

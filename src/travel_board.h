@@ -17,3 +17,5 @@ void board_set_brightness(uint8_t percent);  // set display brightness 0-100 %; 
 uint8_t board_get_brightness();              // returns current brightness 0-100 %
 bool board_is_animating();                   // true while any row is still flipping
 void board_get_row_text(uint8_t row, char* buf, uint8_t bufLen); // copies target text (trimmed)
+void board_set_show_separators(bool show);  // enable/disable dotted separator lines between rows
+bool board_get_show_separators();            // returns current separator visibility setting

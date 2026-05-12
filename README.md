@@ -45,7 +45,7 @@ WiFi credentials are never hardcoded. On first boot the device opens a captive-p
 
 - Split-flap animation with staggered cascade (left-to-right within a row, row 0 through row 5)
 - 6 rows × 21 characters, alphabet `A–Z 0–9` plus `space - : / . !`
-- Dotted separator rules between rows; WiFi signal icon top-right
+- Dotted separator rules between rows (toggleable, persisted to NVS); WiFi signal icon top-right
 - Adjustable brightness (0–100 %) applied immediately, survives dim/wake cycles
 
 ### Burn-in protection
@@ -226,7 +226,7 @@ Once connected, open `http://<board-ip>/` in any browser.
 The UI has three tabs:
 
 - **BOARD** — enter text for each row and click **Update Board**. Also contains the brightness slider, display-off timeout, wake button, demo mode toggle, and WiFi reset. The API key is saved to `localStorage` so you only enter it once per browser.
-- **SETTINGS** — configure the Socket.IO remote server connection (host, port, enable/disable), and control the LED indicators (normal mode, brightness, override mode). Changes take effect immediately without rebooting.
+- **SETTINGS** — configure the Socket.IO remote server connection (host, port, enable/disable), toggle row separator lines, and control the LED indicators (normal mode, brightness, override mode). Changes take effect immediately without rebooting.
 - **API DOCS** — inline reference for all HTTP endpoints with curl examples.
 
 The board's IP address is printed in the serial monitor after connecting and is also returned by `GET /status`.
@@ -255,6 +255,8 @@ IP="192.168.1.42"
 | `POST` | `/display/timeout` | Set idle power-off timeout (minutes, 0 = never) |
 | `GET` | `/config/sio` | Read current Socket.IO config and connection state |
 | `POST` | `/config/sio` | Update Socket.IO config and reconnect immediately |
+| `GET` | `/config/separators` | Read row separator visibility setting |
+| `POST` | `/config/separators` | Toggle row separators (`on` / `off`), persisted to NVS |
 | `GET` | `/led/status` | LED state for both indicators as JSON |
 | `POST` | `/led/<1\|2>/mode` | Set LED normal mode (`on`, `off`, `flash`, `pulse`) |
 | `POST` | `/led/<1\|2>/brightness` | Set LED brightness 0–100 |
@@ -309,7 +311,13 @@ curl -X POST http://$IP/config/sio \
      -H "Content-Type: application/json" \
      -d '{"enabled":true,"host":"192.168.1.10","port":3500}'
 
-# Get status (includes brightness field)
+# Hide row separator lines
+curl -X POST http://$IP/config/separators \
+     -H "X-Api-Key: $KEY" \
+     -H "Content-Type: text/plain" \
+     -d "off"
+
+# Get status (includes brightness and separators fields)
 curl http://$IP/status -H "X-Api-Key: $KEY"
 
 # Clear row 3
@@ -322,14 +330,15 @@ The display accepts `A–Z`, `0–9`, and `space - : / . !`. Lowercase is upperc
 
 ```json
 {
-  "wifi":      "MyNetwork",
-  "ip":        "192.168.1.42",
-  "rssi":      -62,
-  "bars":      2,
-  "free_heap": 214320,
-  "min_heap":  201440,
-  "uptime_s":  47,
+  "wifi":       "MyNetwork",
+  "ip":         "192.168.1.42",
+  "rssi":       -62,
+  "bars":       2,
+  "free_heap":  214320,
+  "min_heap":   201440,
+  "uptime_s":   47,
   "brightness": 78,
+  "separators": true,
   "led1": { "mode": "pulse", "brightness": 100, "override": "flash" },
   "led2": { "mode": "off",   "brightness": 100, "override": "off"  }
 }
